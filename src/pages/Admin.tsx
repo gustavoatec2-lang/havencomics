@@ -1,0 +1,1460 @@
+import { useState, useEffect, useRef, Fragment } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, BookOpen, BarChart2, CheckCircle, Search, Ticket, Copy, Trash2, Star, Image, Edit, FileText, Upload, FileArchive, ImagePlus, ChevronDown, ChevronUp } from 'lucide-react';
+import Header from '@/components/Header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import JSZip from 'jszip';
+interface MangaForm {
+  title: string;
+  type: string;
+  status: string;
+  synopsis: string;
+  author: string;
+  artist: string;
+  cover_url: string;
+  banner_url: string;
+  genres: string[];
+  original_language: string;
+  year_published: string;
+  is_featured: boolean;
+  is_weekly_highlight: boolean;
+  is_home_highlight: boolean;
+}
+
+const initialForm: MangaForm = {
+  title: '',
+  type: 'manga',
+  status: 'ongoing',
+  synopsis: '',
+  author: '',
+  artist: '',
+  cover_url: '',
+  banner_url: '',
+  genres: [],
+  original_language: '',
+  year_published: '',
+  is_featured: false,
+  is_weekly_highlight: false,
+  is_home_highlight: false,
+};
+
+interface VipCode {
+  id: string;
+  code: string;
+  tier: string;
+  duration_days: number;
+  is_used: boolean;
+  used_by: string | null;
+  used_at: string | null;
+  created_at: string;
+}
+
+const Admin = () => {
+  const navigate = useNavigate();
+  const { user, isAdmin, loading } = useAuth();
+  const [mangas, setMangas] = useState<any[]>([]);
+  const [vipCodes, setVipCodes] = useState<VipCode[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isVipModalOpen, setIsVipModalOpen] = useState(false);
+  const [isChapterModalOpen, setIsChapterModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingManga, setEditingManga] = useState<any>(null);
+  const [form, setForm] = useState<MangaForm>(initialForm);
+  const [vipForm, setVipForm] = useState({ tier: 'silver', duration: '30', quantity: '1' });
+  const [chapterForm, setChapterForm] = useState({ manga_id: '', startNumber: '', endNumber: '', title: '', pages: '' });
+  const [mangaSearch, setMangaSearch] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [stats, setStats] = useState({ total: 0, chapters: 0, completed: 0, ongoing: 0 });
+  const [activeTab, setActiveTab] = useState('mangas');
+  const [uploadedPages, setUploadedPages] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<string>('');
+  const [uploadMode, setUploadMode] = useState<'url' | 'file'>('url');
+  const [selectedMangaChapters, setSelectedMangaChapters] = useState<any[]>([]);
+  const [chaptersMangaId, setChaptersMangaId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const zipInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!loading && (!user || !isAdmin)) {
+      navigate('/entrar');
+    }
+  }, [user, isAdmin, loading, navigate]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      fetchMangas();
+      fetchStats();
+      fetchVipCodes();
+    }
+  }, [isAdmin]);
+
+  const fetchMangas = async () => {
+    const { data } = await supabase.from('mangas').select('*').order('created_at', { ascending: false });
+    if (data) setMangas(data);
+  };
+
+  const fetchVipCodes = async () => {
+    const { data } = await supabase.from('vip_codes').select('*').order('created_at', { ascending: false });
+    if (data) setVipCodes(data);
+  };
+
+  const fetchStats = async () => {
+    const { data: mangasData } = await supabase.from('mangas').select('status');
+    const { data: chaptersData } = await supabase.from('chapters').select('id');
+    
+    if (mangasData) {
+      setStats({
+        total: mangasData.length,
+        chapters: chaptersData?.length || 0,
+        completed: mangasData.filter(m => m.status === 'completed').length,
+        ongoing: mangasData.filter(m => m.status === 'ongoing').length,
+      });
+    }
+  };
+
+  const generateCode = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 12; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  };
+
+  const handleCreateVipCodes = async () => {
+    setIsSubmitting(true);
+    const quantity = parseInt(vipForm.quantity);
+    const duration = parseInt(vipForm.duration);
+    
+    const codes = [];
+    for (let i = 0; i < quantity; i++) {
+      codes.push({
+        code: generateCode(),
+        tier: vipForm.tier,
+        duration_days: duration,
+      });
+    }
+
+    const { error } = await supabase.from('vip_codes').insert(codes);
+    
+    setIsSubmitting(false);
+    
+    if (error) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Sucesso!', description: `${quantity} código(s) VIP criado(s)` });
+      setIsVipModalOpen(false);
+      fetchVipCodes();
+    }
+  };
+
+  const copyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    toast({ title: 'Copiado!', description: 'Código copiado para a área de transferência' });
+  };
+
+  const deleteCode = async (id: string) => {
+    const { error } = await supabase.from('vip_codes').delete().eq('id', id);
+    if (error) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Deletado!', description: 'Código removido' });
+      fetchVipCodes();
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title || !form.cover_url) {
+      toast({ title: 'Erro', description: 'Título e URL da capa são obrigatórios', variant: 'destructive' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    const slug = form.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    
+    const { error } = await supabase.from('mangas').insert([{
+      title: form.title,
+      slug,
+      type: form.type as any,
+      status: form.status as any,
+      synopsis: form.synopsis,
+      author: form.author,
+      artist: form.artist,
+      cover_url: form.cover_url,
+      banner_url: form.banner_url,
+      genres: form.genres,
+      original_language: form.original_language,
+      year_published: form.year_published ? parseInt(form.year_published) : null,
+      is_featured: form.is_featured,
+      is_weekly_highlight: form.is_weekly_highlight,
+      is_home_highlight: form.is_home_highlight,
+    }]);
+
+    setIsSubmitting(false);
+    
+    if (error) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Sucesso!', description: 'Obra adicionada com sucesso' });
+      setIsModalOpen(false);
+      setForm(initialForm);
+      fetchMangas();
+      fetchStats();
+    }
+  };
+
+  const filteredMangas = mangas.filter(m => 
+    m.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredMangasForChapter = mangas.filter(m =>
+    m.title.toLowerCase().includes(mangaSearch.toLowerCase())
+  );
+
+  const handleAddChapter = async () => {
+    if (!chapterForm.manga_id || !chapterForm.startNumber) {
+      toast({ title: 'Erro', description: 'Selecione uma obra e número do capítulo inicial', variant: 'destructive' });
+      return;
+    }
+
+    const startNum = parseInt(chapterForm.startNumber);
+    const endNum = chapterForm.endNumber ? parseInt(chapterForm.endNumber) : startNum;
+    const totalChapters = endNum - startNum + 1;
+
+    if (endNum < startNum) {
+      toast({ title: 'Erro', description: 'O número final deve ser maior ou igual ao inicial', variant: 'destructive' });
+      return;
+    }
+
+    // For multiple chapters, we need files uploaded
+    if (totalChapters > 1 && uploadMode === 'url') {
+      toast({ title: 'Erro', description: 'Para múltiplos capítulos, use upload de arquivos organizados em pastas', variant: 'destructive' });
+      return;
+    }
+
+    // Check if we have pages from either URL or file upload
+    const urlPages = chapterForm.pages.split('\n').map(p => p.trim()).filter(p => p);
+    if (uploadMode === 'url' && urlPages.length === 0) {
+      toast({ title: 'Erro', description: 'Adicione ao menos uma URL de página', variant: 'destructive' });
+      return;
+    }
+    if (uploadMode === 'file' && uploadedPages.length === 0) {
+      toast({ title: 'Erro', description: 'Faça upload de ao menos uma imagem', variant: 'destructive' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    const manga = mangas.find(m => m.id === chapterForm.manga_id);
+    const mangaSlug = manga?.slug || chapterForm.manga_id;
+
+    if (uploadMode === 'file' && totalChapters > 1) {
+      // Multiple chapters - organize files by folder names or split evenly
+      // Group files by folder prefix (e.g., "cap01/", "cap02/", "1/", "2/")
+      const filesByChapter: Map<number, File[]> = new Map();
+      
+      for (const file of uploadedPages) {
+        // Check if file has folder structure like "cap01/page.jpg" or "1/page.jpg"
+        const pathParts = file.name.split('/');
+        let chapterNum = startNum;
+        
+        if (pathParts.length > 1) {
+          const folderName = pathParts[0];
+          const match = folderName.match(/(\d+)/);
+          if (match) {
+            chapterNum = parseInt(match[1]);
+          }
+        } else {
+          // If no folder structure, split evenly
+          const pagesPerChapter = Math.ceil(uploadedPages.length / totalChapters);
+          const fileIndex = uploadedPages.indexOf(file);
+          chapterNum = startNum + Math.floor(fileIndex / pagesPerChapter);
+        }
+        
+        if (chapterNum >= startNum && chapterNum <= endNum) {
+          if (!filesByChapter.has(chapterNum)) {
+            filesByChapter.set(chapterNum, []);
+          }
+          filesByChapter.get(chapterNum)!.push(file);
+        }
+      }
+
+      let chaptersCreated = 0;
+      for (let chapterNum = startNum; chapterNum <= endNum; chapterNum++) {
+        const chapterFiles = filesByChapter.get(chapterNum) || [];
+        if (chapterFiles.length === 0) continue;
+        
+        setUploadProgress(`Capítulo ${chapterNum}: Enviando 0/${chapterFiles.length}...`);
+        
+        const pagesArray: string[] = [];
+        for (let i = 0; i < chapterFiles.length; i++) {
+          const file = chapterFiles[i];
+          const ext = file.name.split('.').pop() || 'jpg';
+          const fileName = `${mangaSlug}/cap-${chapterNum}/page-${String(i + 1).padStart(3, '0')}.${ext}`;
+          
+          setUploadProgress(`Capítulo ${chapterNum}: Enviando ${i + 1}/${chapterFiles.length}...`);
+          
+          const { error: uploadError } = await supabase.storage
+            .from('chapter-pages')
+            .upload(fileName, file, { upsert: true });
+          
+          if (uploadError) {
+            toast({ title: 'Erro no upload', description: uploadError.message, variant: 'destructive' });
+            setIsSubmitting(false);
+            setUploadProgress('');
+            return;
+          }
+          
+          const { data: { publicUrl } } = supabase.storage
+            .from('chapter-pages')
+            .getPublicUrl(fileName);
+          
+          pagesArray.push(publicUrl);
+        }
+
+        const { error } = await supabase.from('chapters').insert({
+          manga_id: chapterForm.manga_id,
+          number: chapterNum,
+          title: null,
+          pages: pagesArray,
+        });
+        
+        if (error) {
+          toast({ title: 'Erro', description: `Capítulo ${chapterNum}: ${error.message}`, variant: 'destructive' });
+        } else {
+          chaptersCreated++;
+        }
+      }
+      
+      setUploadProgress('');
+      setIsSubmitting(false);
+      toast({ title: 'Sucesso!', description: `${chaptersCreated} capítulo(s) adicionado(s)` });
+      setIsChapterModalOpen(false);
+      setChapterForm({ manga_id: '', startNumber: '', endNumber: '', title: '', pages: '' });
+      setMangaSearch('');
+      setUploadedPages([]);
+      setUploadMode('url');
+      fetchStats();
+      return;
+    }
+
+    // Single chapter upload (original logic)
+    let pagesArray: string[] = [];
+
+    if (uploadMode === 'file') {
+      setUploadProgress(`Enviando 0/${uploadedPages.length}...`);
+      
+      for (let i = 0; i < uploadedPages.length; i++) {
+        const file = uploadedPages[i];
+        const ext = file.name.split('.').pop() || 'jpg';
+        const fileName = `${mangaSlug}/cap-${startNum}/page-${String(i + 1).padStart(3, '0')}.${ext}`;
+        
+        setUploadProgress(`Enviando ${i + 1}/${uploadedPages.length}...`);
+        
+        const { error: uploadError } = await supabase.storage
+          .from('chapter-pages')
+          .upload(fileName, file, { upsert: true });
+        
+        if (uploadError) {
+          toast({ title: 'Erro no upload', description: uploadError.message, variant: 'destructive' });
+          setIsSubmitting(false);
+          setUploadProgress('');
+          return;
+        }
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('chapter-pages')
+          .getPublicUrl(fileName);
+        
+        pagesArray.push(publicUrl);
+      }
+      setUploadProgress('');
+    } else {
+      pagesArray = urlPages;
+    }
+    
+    const { error } = await supabase.from('chapters').insert({
+      manga_id: chapterForm.manga_id,
+      number: startNum,
+      title: chapterForm.title || null,
+      pages: pagesArray,
+    });
+    
+    setIsSubmitting(false);
+    if (error) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Sucesso!', description: 'Capítulo adicionado' });
+      setIsChapterModalOpen(false);
+      setChapterForm({ manga_id: '', startNumber: '', endNumber: '', title: '', pages: '' });
+      setMangaSearch('');
+      setUploadedPages([]);
+      setUploadMode('url');
+      fetchStats();
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    
+    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+    imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    setUploadedPages(prev => [...prev, ...imageFiles]);
+    
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setUploadProgress('Extraindo ZIP...');
+    
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const imageFiles: File[] = [];
+      
+      const entries = Object.keys(zip.files).sort((a, b) => 
+        a.localeCompare(b, undefined, { numeric: true })
+      );
+      
+      for (const fileName of entries) {
+        const zipEntry = zip.files[fileName];
+        if (zipEntry.dir) continue;
+        
+        const ext = fileName.split('.').pop()?.toLowerCase();
+        if (!['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '')) continue;
+        
+        const blob = await zipEntry.async('blob');
+        const imageFile = new File([blob], fileName.split('/').pop() || fileName, { 
+          type: `image/${ext === 'jpg' ? 'jpeg' : ext}` 
+        });
+        imageFiles.push(imageFile);
+      }
+      
+      setUploadedPages(prev => [...prev, ...imageFiles]);
+      setUploadProgress('');
+      toast({ title: 'ZIP extraído', description: `${imageFiles.length} imagens encontradas` });
+    } catch (err) {
+      toast({ title: 'Erro', description: 'Falha ao extrair ZIP', variant: 'destructive' });
+      setUploadProgress('');
+    }
+    
+    if (zipInputRef.current) zipInputRef.current.value = '';
+  };
+
+  const removeUploadedPage = (index: number) => {
+    setUploadedPages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleEditManga = (manga: any) => {
+    setEditingManga(manga);
+    setForm({
+      title: manga.title,
+      type: manga.type,
+      status: manga.status,
+      synopsis: manga.synopsis || '',
+      author: manga.author || '',
+      artist: manga.artist || '',
+      cover_url: manga.cover_url || '',
+      banner_url: manga.banner_url || '',
+      genres: manga.genres || [],
+      original_language: manga.original_language || '',
+      year_published: manga.year_published?.toString() || '',
+      is_featured: manga.is_featured || false,
+      is_weekly_highlight: manga.is_weekly_highlight || false,
+      is_home_highlight: manga.is_home_highlight || false,
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateManga = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingManga) return;
+    
+    setIsSubmitting(true);
+    const { error } = await supabase.from('mangas').update({
+      title: form.title,
+      type: form.type as any,
+      status: form.status as any,
+      synopsis: form.synopsis,
+      author: form.author,
+      artist: form.artist,
+      cover_url: form.cover_url,
+      banner_url: form.banner_url,
+      genres: form.genres,
+      original_language: form.original_language,
+      year_published: form.year_published ? parseInt(form.year_published) : null,
+      is_featured: form.is_featured,
+      is_weekly_highlight: form.is_weekly_highlight,
+      is_home_highlight: form.is_home_highlight,
+    }).eq('id', editingManga.id);
+    
+    setIsSubmitting(false);
+    if (error) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Sucesso!', description: 'Obra atualizada' });
+      setIsEditModalOpen(false);
+      setEditingManga(null);
+      setForm(initialForm);
+      fetchMangas();
+    }
+  };
+
+  const handleDeleteManga = async (id: string, title: string) => {
+    if (!confirm(`Tem certeza que deseja excluir "${title}"? Esta ação não pode ser desfeita.`)) return;
+    
+    const { error } = await supabase.from('mangas').delete().eq('id', id);
+    if (error) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Excluído!', description: 'Obra removida com sucesso' });
+      fetchMangas();
+      fetchStats();
+    }
+  };
+
+  const fetchMangaChapters = async (mangaId: string) => {
+    if (chaptersMangaId === mangaId) {
+      setChaptersMangaId(null);
+      setSelectedMangaChapters([]);
+      return;
+    }
+    const { data } = await supabase
+      .from('chapters')
+      .select('*')
+      .eq('manga_id', mangaId)
+      .order('number', { ascending: true });
+    setSelectedMangaChapters(data || []);
+    setChaptersMangaId(mangaId);
+  };
+
+  const handleDeleteChapter = async (chapterId: string, chapterNumber: number) => {
+    if (!confirm(`Excluir capítulo ${chapterNumber}?`)) return;
+    
+    const { error } = await supabase.from('chapters').delete().eq('id', chapterId);
+    if (error) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Excluído!', description: `Capítulo ${chapterNumber} removido` });
+      setSelectedMangaChapters(prev => prev.filter(c => c.id !== chapterId));
+      fetchStats();
+    }
+  };
+
+  if (loading) {
+    return <div className="min-h-screen bg-background flex items-center justify-center">Carregando...</div>;
+  }
+
+  if (!isAdmin) {
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      
+      <main className="container py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-display font-bold mb-2">Painel Administrativo</h1>
+          <p className="text-muted-foreground">Gerencie todas as obras, capítulos e conteúdo do site</p>
+        </div>
+
+        {/* Stats */}
+        <section className="mb-8">
+          <h2 className="text-xl font-display font-bold mb-4">Resumo Geral</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-muted-foreground">Títulos Totais</span>
+                <BookOpen className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <p className="text-3xl font-bold">{stats.total}</p>
+              <p className="text-xs text-muted-foreground">Obras cadastradas</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-muted-foreground">Capítulos</span>
+                <div className="h-8 w-8 rounded-full bg-info/20 flex items-center justify-center">
+                  <BarChart2 className="h-4 w-4 text-info" />
+                </div>
+              </div>
+              <p className="text-3xl font-bold">{stats.chapters}</p>
+              <p className="text-xs text-muted-foreground">Total publicados</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-muted-foreground">Códigos VIP</span>
+                <div className="h-8 w-8 rounded-full bg-warning/20 flex items-center justify-center">
+                  <Ticket className="h-4 w-4 text-warning" />
+                </div>
+              </div>
+              <p className="text-3xl font-bold">{vipCodes.filter(c => !c.is_used).length}</p>
+              <p className="text-xs text-muted-foreground">Disponíveis</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-muted-foreground">VIP Ativos</span>
+                <div className="h-8 w-8 rounded-full bg-success/20 flex items-center justify-center">
+                  <CheckCircle className="h-4 w-4 text-success" />
+                </div>
+              </div>
+              <p className="text-3xl font-bold">{vipCodes.filter(c => c.is_used).length}</p>
+              <p className="text-xs text-muted-foreground">Códigos utilizados</p>
+            </div>
+          </div>
+        </section>
+
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="mb-6">
+            <TabsTrigger value="mangas">Mangás</TabsTrigger>
+            <TabsTrigger value="destaque">Destaque</TabsTrigger>
+            <TabsTrigger value="vip">Códigos VIP</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="mangas">
+            {/* Quick Actions */}
+            <section className="mb-8">
+              <h2 className="text-xl font-display font-bold mb-4">Ações Rápidas</h2>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" className="gap-2" onClick={() => setIsModalOpen(true)}>
+                  <Plus className="h-4 w-4" /> Adicionar Nova Obra
+                </Button>
+                <Button variant="outline" className="gap-2" onClick={() => setIsChapterModalOpen(true)}>
+                  <FileText className="h-4 w-4" /> Adicionar Novo Capítulo
+                </Button>
+                <Button variant="outline" className="gap-2" onClick={() => navigate('/catalogo')}>
+                  <BookOpen className="h-4 w-4" /> Ver Catálogo
+                </Button>
+              </div>
+            </section>
+
+            {/* Content Management */}
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-display font-bold">Gerenciar Conteúdo</h2>
+                <div className="relative w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por título..."
+                    className="pl-9"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-secondary/50">
+                    <tr>
+                      <th className="text-left p-4 text-sm font-medium">Capa</th>
+                      <th className="text-left p-4 text-sm font-medium">Título</th>
+                      <th className="text-left p-4 text-sm font-medium hidden md:table-cell">Informações</th>
+                      <th className="text-right p-4 text-sm font-medium">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredMangas.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="p-8 text-center text-muted-foreground">
+                          Nenhuma obra encontrada
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredMangas.map((manga) => (
+                        <Fragment key={manga.id}>
+                          <tr className="border-t border-border">
+                            <td className="p-4">
+                              <div className="w-12 h-16 rounded overflow-hidden bg-secondary">
+                                {manga.cover_url && (
+                                  <img src={manga.cover_url} alt={manga.title} className="w-full h-full object-cover" />
+                                )}
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <p className="font-medium">{manga.title}</p>
+                              <p className="text-sm text-muted-foreground">Por {manga.author || 'Desconhecido'}</p>
+                            </td>
+                            <td className="p-4 hidden md:table-cell">
+                              <div className="flex flex-wrap gap-1 mb-2">
+                                <Badge variant="secondary">{manga.type}</Badge>
+                                <Badge variant={manga.status === 'ongoing' ? 'success' : 'info'}>
+                                  {manga.status === 'ongoing' ? 'Em Andamento' : manga.status === 'completed' ? 'Completo' : manga.status}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Atualizado: {new Date(manga.updated_at).toLocaleDateString('pt-BR')}
+                              </div>
+                            </td>
+                            <td className="p-4 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button variant="ghost" size="icon" onClick={() => fetchMangaChapters(manga.id)} title="Ver capítulos">
+                                  {chaptersMangaId === manga.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={() => handleEditManga(manga)} title="Editar">
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={() => handleDeleteManga(manga.id, manga.title)} title="Excluir">
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                          {chaptersMangaId === manga.id && (
+                            <tr key={`${manga.id}-chapters`} className="bg-secondary/30">
+                              <td colSpan={4} className="p-4">
+                                <div className="space-y-2">
+                                  <p className="font-medium text-sm mb-3">Capítulos de {manga.title}</p>
+                                  {selectedMangaChapters.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">Nenhum capítulo</p>
+                                  ) : (
+                                    <div className="grid gap-2 max-h-64 overflow-y-auto">
+                                      {selectedMangaChapters.map((chapter) => (
+                                        <div key={chapter.id} className="flex items-center justify-between bg-card rounded-lg px-3 py-2">
+                                          <div>
+                                            <span className="font-medium">Cap. {chapter.number}</span>
+                                            {chapter.title && <span className="text-muted-foreground ml-2">- {chapter.title}</span>}
+                                            <span className="text-xs text-muted-foreground ml-2">
+                                              ({chapter.pages?.length || 0} páginas)
+                                            </span>
+                                          </div>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => handleDeleteChapter(chapter.id, chapter.number)}
+                                            className="h-8 w-8"
+                                          >
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                          </Button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </TabsContent>
+
+          <TabsContent value="destaque">
+            {/* Featured Manga Selection */}
+            <section className="space-y-6">
+              <h2 className="text-xl font-display font-bold flex items-center gap-2">
+                <Star className="h-5 w-5" />
+                Gerenciar Destaque da Home
+              </h2>
+              <p className="text-muted-foreground text-sm">
+                Selecione uma obra existente para aparecer como destaque principal na página inicial
+              </p>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Current Featured */}
+                <div className="rounded-xl border border-border bg-card p-6">
+                  <h3 className="font-medium mb-4">Destaque Atual</h3>
+                  {mangas.filter(m => m.is_home_highlight).length > 0 ? (
+                    mangas.filter(m => m.is_home_highlight).map(manga => (
+                      <div key={manga.id} className="flex items-center gap-4">
+                        <div className="w-16 h-20 rounded overflow-hidden bg-secondary">
+                          {manga.cover_url && <img src={manga.cover_url} alt="" className="w-full h-full object-cover" />}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-medium">{manga.title}</p>
+                          <Badge variant="secondary" className="text-xs">{manga.type}</Badge>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={async () => {
+                          await supabase.from('mangas').update({ is_home_highlight: false }).eq('id', manga.id);
+                          fetchMangas();
+                          toast({ title: 'Removido do destaque' });
+                        }}>
+                          Remover
+                        </Button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-muted-foreground text-sm">Nenhuma obra em destaque</p>
+                  )}
+                </div>
+
+                {/* Select New Featured */}
+                <div className="rounded-xl border border-border bg-card p-6">
+                  <h3 className="font-medium mb-4">Selecionar Nova Obra</h3>
+                  <div className="space-y-4">
+                    <Select onValueChange={async (mangaId) => {
+                      // Remove current highlight
+                      await supabase.from('mangas').update({ is_home_highlight: false }).neq('id', '');
+                      // Set new highlight
+                      await supabase.from('mangas').update({ is_home_highlight: true }).eq('id', mangaId);
+                      fetchMangas();
+                      toast({ title: 'Destaque atualizado!' });
+                    }}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione uma obra" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mangas.map(manga => (
+                          <SelectItem key={manga.id} value={manga.id}>
+                            {manga.title} ({manga.type})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Banner Image Section */}
+              <div className="rounded-xl border border-border bg-card p-6">
+                <h3 className="font-medium mb-4 flex items-center gap-2">
+                  <Image className="h-4 w-4" />
+                  Imagem de Fundo do Destaque
+                </h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Defina a URL do banner para a obra em destaque. A imagem ficará com blur no fundo.
+                </p>
+                {mangas.filter(m => m.is_home_highlight).map(manga => (
+                  <div key={manga.id} className="space-y-4">
+                    <Input
+                      placeholder="URL da imagem de fundo"
+                      defaultValue={manga.banner_url || ''}
+                      onBlur={async (e) => {
+                        await supabase.from('mangas').update({ banner_url: e.target.value }).eq('id', manga.id);
+                        fetchMangas();
+                        toast({ title: 'Banner atualizado!' });
+                      }}
+                    />
+                    {manga.banner_url && (
+                      <div className="relative h-32 rounded-lg overflow-hidden">
+                        <img src={manga.banner_url} alt="" className="w-full h-full object-cover blur-sm" />
+                        <div className="absolute inset-0 bg-background/60" />
+                        <p className="absolute inset-0 flex items-center justify-center text-sm font-medium">
+                          Preview do fundo com blur
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {mangas.filter(m => m.is_home_highlight).length === 0 && (
+                  <p className="text-muted-foreground text-sm">Selecione uma obra primeiro</p>
+                )}
+              </div>
+            </section>
+          </TabsContent>
+
+          <TabsContent value="vip">
+            {/* VIP Quick Actions */}
+            <section className="mb-8">
+              <h2 className="text-xl font-display font-bold mb-4">Gerenciar Códigos VIP</h2>
+              <Button variant="outline" className="gap-2" onClick={() => setIsVipModalOpen(true)}>
+                <Plus className="h-4 w-4" /> Criar Códigos VIP
+              </Button>
+            </section>
+
+            {/* VIP Codes Table */}
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-secondary/50">
+                  <tr>
+                    <th className="text-left p-4 text-sm font-medium">Código</th>
+                    <th className="text-left p-4 text-sm font-medium">Tier</th>
+                    <th className="text-left p-4 text-sm font-medium">Duração</th>
+                    <th className="text-left p-4 text-sm font-medium">Status</th>
+                    <th className="text-left p-4 text-sm font-medium hidden md:table-cell">Criado em</th>
+                    <th className="text-right p-4 text-sm font-medium">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vipCodes.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                        Nenhum código VIP criado
+                      </td>
+                    </tr>
+                  ) : (
+                    vipCodes.map((code) => (
+                      <tr key={code.id} className="border-t border-border">
+                        <td className="p-4">
+                          <code className="bg-secondary px-2 py-1 rounded text-sm font-mono">{code.code}</code>
+                        </td>
+                        <td className="p-4">
+                          <Badge variant={code.tier === 'gold' ? 'warning' : 'secondary'} className="capitalize">
+                            {code.tier}
+                          </Badge>
+                        </td>
+                        <td className="p-4 text-sm">{code.duration_days} dias</td>
+                        <td className="p-4">
+                          <Badge variant={code.is_used ? 'destructive' : 'success'}>
+                            {code.is_used ? 'Usado' : 'Disponível'}
+                          </Badge>
+                        </td>
+                        <td className="p-4 text-sm text-muted-foreground hidden md:table-cell">
+                          {new Date(code.created_at).toLocaleDateString('pt-BR')}
+                        </td>
+                        <td className="p-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => copyCode(code.code)}>
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                            {!code.is_used && (
+                              <Button variant="ghost" size="icon" onClick={() => deleteCode(code.id)}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </main>
+
+      {/* Add Manga Modal */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Adicionar Nova Obra</DialogTitle>
+          </DialogHeader>
+          
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <h3 className="font-medium mb-3">Informações Básicas</h3>
+              <div className="space-y-4">
+                <div>
+                  <Label>Título *</Label>
+                  <Input
+                    placeholder="Ex: Solo Leveling"
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Tipo *</Label>
+                    <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="manga">Manga</SelectItem>
+                        <SelectItem value="manhwa">Manhwa</SelectItem>
+                        <SelectItem value="manhua">Manhua</SelectItem>
+                        <SelectItem value="novel">Novel</SelectItem>
+                        <SelectItem value="webtoon">Webtoon</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Status *</Label>
+                    <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ongoing">Em Andamento</SelectItem>
+                        <SelectItem value="completed">Completo</SelectItem>
+                        <SelectItem value="hiatus">Hiato</SelectItem>
+                        <SelectItem value="cancelled">Cancelado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <div>
+                  <Label>Sinopse</Label>
+                  <Textarea
+                    placeholder="Descreva a história..."
+                    value={form.synopsis}
+                    onChange={(e) => setForm({ ...form, synopsis: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-medium mb-3">Imagens</h3>
+              <div className="space-y-4">
+                <div>
+                  <Label>URL da Capa *</Label>
+                  <Input
+                    placeholder="https://..."
+                    value={form.cover_url}
+                    onChange={(e) => setForm({ ...form, cover_url: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>URL do Banner (Opcional)</Label>
+                  <Input
+                    placeholder="Para obras destacadas"
+                    value={form.banner_url}
+                    onChange={(e) => setForm({ ...form, banner_url: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-medium mb-3">Informações Adicionais</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Autor</Label>
+                  <Input
+                    placeholder="Nome do autor"
+                    value={form.author}
+                    onChange={(e) => setForm({ ...form, author: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Artista</Label>
+                  <Input
+                    placeholder="Nome do artista"
+                    value={form.artist}
+                    onChange={(e) => setForm({ ...form, artist: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-medium mb-3">Configurações de Destaque</h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Destaque da Semana</p>
+                    <p className="text-xs text-muted-foreground">Aparece no banner principal</p>
+                  </div>
+                  <Switch
+                    checked={form.is_weekly_highlight}
+                    onCheckedChange={(v) => setForm({ ...form, is_weekly_highlight: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Mangás em Destaque</p>
+                    <p className="text-xs text-muted-foreground">Seção de obras em destaque</p>
+                  </div>
+                  <Switch
+                    checked={form.is_featured}
+                    onCheckedChange={(v) => setForm({ ...form, is_featured: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Em Destaque na Home</p>
+                    <p className="text-xs text-muted-foreground">Aparece na página inicial</p>
+                  </div>
+                  <Switch
+                    checked={form.is_home_highlight}
+                    onCheckedChange={(v) => setForm({ ...form, is_home_highlight: v })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-border">
+              <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Adicionando...' : 'Adicionar Obra'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create VIP Code Modal */}
+      <Dialog open={isVipModalOpen} onOpenChange={setIsVipModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Criar Códigos VIP</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label>Tier</Label>
+              <Select value={vipForm.tier} onValueChange={(v) => setVipForm({ ...vipForm, tier: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="silver">Silver</SelectItem>
+                  <SelectItem value="gold">Gold</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Duração (dias)</Label>
+              <Select value={vipForm.duration} onValueChange={(v) => setVipForm({ ...vipForm, duration: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">7 dias</SelectItem>
+                  <SelectItem value="15">15 dias</SelectItem>
+                  <SelectItem value="30">30 dias</SelectItem>
+                  <SelectItem value="60">60 dias</SelectItem>
+                  <SelectItem value="90">90 dias</SelectItem>
+                  <SelectItem value="365">1 ano</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Quantidade de códigos</Label>
+              <Input
+                type="number"
+                min="1"
+                max="100"
+                value={vipForm.quantity}
+                onChange={(e) => setVipForm({ ...vipForm, quantity: e.target.value })}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-border">
+              <Button type="button" variant="outline" onClick={() => setIsVipModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleCreateVipCodes} disabled={isSubmitting}>
+                {isSubmitting ? 'Criando...' : 'Criar Códigos'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Chapter Modal */}
+      <Dialog open={isChapterModalOpen} onOpenChange={setIsChapterModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Adicionar Novo Capítulo</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label>Selecionar Obra *</Label>
+              <Input
+                placeholder="Digite para buscar..."
+                value={mangaSearch}
+                onChange={(e) => setMangaSearch(e.target.value)}
+                className="mb-2"
+              />
+              {mangaSearch && (
+                <div className="max-h-40 overflow-y-auto border border-border rounded-lg">
+                  {filteredMangasForChapter.slice(0, 10).map(manga => (
+                    <button
+                      key={manga.id}
+                      type="button"
+                      className={`w-full text-left p-3 hover:bg-secondary flex items-center gap-3 ${chapterForm.manga_id === manga.id ? 'bg-secondary' : ''}`}
+                      onClick={() => {
+                        setChapterForm({ ...chapterForm, manga_id: manga.id });
+                        setMangaSearch(manga.title);
+                      }}
+                    >
+                      <div className="w-8 h-10 rounded overflow-hidden bg-muted flex-shrink-0">
+                        {manga.cover_url && <img src={manga.cover_url} alt="" className="w-full h-full object-cover" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{manga.title}</p>
+                        <p className="text-xs text-muted-foreground">{manga.type}</p>
+                      </div>
+                    </button>
+                  ))}
+                  {filteredMangasForChapter.length === 0 && (
+                    <p className="p-3 text-sm text-muted-foreground">Nenhuma obra encontrada</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label>Capítulo Inicial *</Label>
+                <Input
+                  type="number"
+                  placeholder="Ex: 1"
+                  value={chapterForm.startNumber}
+                  onChange={(e) => setChapterForm({ ...chapterForm, startNumber: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Capítulo Final (opcional)</Label>
+                <Input
+                  type="number"
+                  placeholder="Ex: 10"
+                  value={chapterForm.endNumber}
+                  onChange={(e) => setChapterForm({ ...chapterForm, endNumber: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Para múltiplos caps</p>
+              </div>
+              <div>
+                <Label>Título (Opcional)</Label>
+                <Input
+                  placeholder="Ex: O Início"
+                  value={chapterForm.title}
+                  onChange={(e) => setChapterForm({ ...chapterForm, title: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label>Páginas do Capítulo</Label>
+              <div className="flex gap-2 mb-3">
+                <Button
+                  type="button"
+                  variant={uploadMode === 'url' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setUploadMode('url')}
+                >
+                  URLs
+                </Button>
+                <Button
+                  type="button"
+                  variant={uploadMode === 'file' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setUploadMode('file')}
+                >
+                  Upload de Arquivos
+                </Button>
+              </div>
+              
+              {uploadMode === 'url' ? (
+                <>
+                  <p className="text-xs text-muted-foreground mb-2">Uma URL por linha</p>
+                  <Textarea
+                    placeholder="https://exemplo.com/pagina1.jpg&#10;https://exemplo.com/pagina2.jpg"
+                    value={chapterForm.pages}
+                    onChange={(e) => setChapterForm({ ...chapterForm, pages: e.target.value })}
+                    rows={5}
+                  />
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+                  <input
+                    ref={zipInputRef}
+                    type="file"
+                    accept=".zip"
+                    className="hidden"
+                    onChange={handleZipUpload}
+                  />
+                  
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <ImagePlus className="h-4 w-4 mr-2" />
+                      Adicionar Imagens
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => zipInputRef.current?.click()}
+                    >
+                      <FileArchive className="h-4 w-4 mr-2" />
+                      Enviar ZIP
+                    </Button>
+                  </div>
+                  
+                  {uploadProgress && (
+                    <p className="text-sm text-muted-foreground">{uploadProgress}</p>
+                  )}
+                  
+                  {uploadedPages.length > 0 && (
+                    <div className="border border-border rounded-lg p-3 max-h-48 overflow-y-auto">
+                      <p className="text-sm font-medium mb-2">{uploadedPages.length} página(s) selecionada(s)</p>
+                      <div className="space-y-1">
+                        {uploadedPages.map((file, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-sm bg-muted/50 rounded px-2 py-1">
+                            <span className="truncate mr-2">{idx + 1}. {file.name}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() => removeUploadedPage(idx)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-border">
+              <Button type="button" variant="outline" onClick={() => {
+                setIsChapterModalOpen(false);
+                setChapterForm({ manga_id: '', startNumber: '', endNumber: '', title: '', pages: '' });
+                setMangaSearch('');
+                setUploadedPages([]);
+                setUploadMode('url');
+              }}>
+                Cancelar
+              </Button>
+              <Button onClick={handleAddChapter} disabled={isSubmitting}>
+                {isSubmitting ? (uploadProgress || 'Adicionando...') : 'Adicionar Capítulo'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Manga Modal */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar Obra</DialogTitle>
+          </DialogHeader>
+          
+          <form onSubmit={handleUpdateManga} className="space-y-6">
+            <div>
+              <h3 className="font-medium mb-3">Informações Básicas</h3>
+              <div className="space-y-4">
+                <div>
+                  <Label>Título *</Label>
+                  <Input
+                    placeholder="Ex: Solo Leveling"
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Tipo *</Label>
+                    <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="manga">Manga</SelectItem>
+                        <SelectItem value="manhwa">Manhwa</SelectItem>
+                        <SelectItem value="manhua">Manhua</SelectItem>
+                        <SelectItem value="novel">Novel</SelectItem>
+                        <SelectItem value="webtoon">Webtoon</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Status *</Label>
+                    <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ongoing">Em Andamento</SelectItem>
+                        <SelectItem value="completed">Completo</SelectItem>
+                        <SelectItem value="hiatus">Hiato</SelectItem>
+                        <SelectItem value="cancelled">Cancelado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <div>
+                  <Label>Sinopse</Label>
+                  <Textarea
+                    placeholder="Descreva a história..."
+                    value={form.synopsis}
+                    onChange={(e) => setForm({ ...form, synopsis: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-medium mb-3">Imagens</h3>
+              <div className="space-y-4">
+                <div>
+                  <Label>URL da Capa *</Label>
+                  <Input
+                    placeholder="https://..."
+                    value={form.cover_url}
+                    onChange={(e) => setForm({ ...form, cover_url: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>URL do Banner (Opcional)</Label>
+                  <Input
+                    placeholder="Para obras destacadas"
+                    value={form.banner_url}
+                    onChange={(e) => setForm({ ...form, banner_url: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-medium mb-3">Informações Adicionais</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Autor</Label>
+                  <Input
+                    placeholder="Nome do autor"
+                    value={form.author}
+                    onChange={(e) => setForm({ ...form, author: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Artista</Label>
+                  <Input
+                    placeholder="Nome do artista"
+                    value={form.artist}
+                    onChange={(e) => setForm({ ...form, artist: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-border">
+              <Button type="button" variant="outline" onClick={() => {
+                setIsEditModalOpen(false);
+                setEditingManga(null);
+                setForm(initialForm);
+              }}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Salvando...' : 'Salvar Alterações'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default Admin;
