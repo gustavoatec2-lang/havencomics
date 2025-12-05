@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, BookOpen, BarChart2, CheckCircle, Search, Ticket, Copy, Trash2, Star, Image, Edit, FileText, Upload, FileArchive, ImagePlus, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, BookOpen, BarChart2, CheckCircle, Search, Ticket, Copy, Trash2, Star, Image, Edit, FileText, Upload, FileArchive, ImagePlus, ChevronDown, ChevronUp, UserPlus, Shield } from 'lucide-react';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -85,6 +85,9 @@ const Admin = () => {
   const [chaptersMangaId, setChaptersMangaId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
+  const [isAddAdminModalOpen, setIsAddAdminModalOpen] = useState(false);
+  const [adminEmail, setAdminEmail] = useState('');
+  const [isAddingAdmin, setIsAddingAdmin] = useState(false);
 
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) {
@@ -625,6 +628,7 @@ const Admin = () => {
             <TabsTrigger value="mangas">Mangás</TabsTrigger>
             <TabsTrigger value="destaque">Destaque</TabsTrigger>
             <TabsTrigger value="vip">Códigos VIP</TabsTrigger>
+            <TabsTrigger value="admins">Admins</TabsTrigger>
           </TabsList>
 
           <TabsContent value="mangas">
@@ -930,6 +934,29 @@ const Admin = () => {
                 </tbody>
               </table>
             </div>
+          </TabsContent>
+
+          <TabsContent value="admins">
+            <section className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-display font-bold flex items-center gap-2">
+                  <Shield className="h-5 w-5" />
+                  Gerenciar Administradores
+                </h2>
+                <Button className="gap-2" onClick={() => setIsAddAdminModalOpen(true)}>
+                  <UserPlus className="h-4 w-4" /> Adicionar Admin
+                </Button>
+              </div>
+              <p className="text-muted-foreground text-sm">
+                Adicione novos administradores inserindo o email da conta do usuário.
+              </p>
+
+              <div className="rounded-xl border border-border bg-card p-6">
+                <p className="text-sm text-muted-foreground">
+                  Clique em "Adicionar Admin" para promover um usuário existente a administrador.
+                </p>
+              </div>
+            </section>
           </TabsContent>
         </Tabs>
       </main>
@@ -1451,6 +1478,72 @@ const Admin = () => {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Admin Modal */}
+      <Dialog open={isAddAdminModalOpen} onOpenChange={setIsAddAdminModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Adicionar Administrador</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label>Email do Usuário</Label>
+              <Input
+                type="email"
+                placeholder="usuario@exemplo.com"
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                O usuário já deve ter uma conta registrada no site.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-border">
+              <Button variant="outline" onClick={() => {
+                setIsAddAdminModalOpen(false);
+                setAdminEmail('');
+              }}>
+                Cancelar
+              </Button>
+              <Button 
+                disabled={isAddingAdmin || !adminEmail}
+                onClick={async () => {
+                  if (!adminEmail) return;
+                  
+                  setIsAddingAdmin(true);
+                  
+                  // First find the user by email in profiles (we need to query auth.users but we can't directly)
+                  // We'll use an edge function for this
+                  const { data, error } = await supabase.functions.invoke('add-admin', {
+                    body: { email: adminEmail }
+                  });
+                  
+                  setIsAddingAdmin(false);
+                  
+                  if (error || data?.error) {
+                    toast({ 
+                      title: 'Erro', 
+                      description: data?.error || error?.message || 'Erro ao adicionar admin', 
+                      variant: 'destructive' 
+                    });
+                  } else {
+                    toast({ 
+                      title: 'Sucesso!', 
+                      description: `${adminEmail} agora é administrador` 
+                    });
+                    setIsAddAdminModalOpen(false);
+                    setAdminEmail('');
+                  }
+                }}
+              >
+                {isAddingAdmin ? 'Adicionando...' : 'Adicionar Admin'}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
