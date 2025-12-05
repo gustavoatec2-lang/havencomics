@@ -86,9 +86,15 @@ const Admin = () => {
   const [chaptersMangaId, setChaptersMangaId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
+  const editCoverInputRef = useRef<HTMLInputElement>(null);
+  const editBannerInputRef = useRef<HTMLInputElement>(null);
   const [isAddAdminModalOpen, setIsAddAdminModalOpen] = useState(false);
   const [adminEmail, setAdminEmail] = useState('');
   const [isAddingAdmin, setIsAddingAdmin] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [bannerUploading, setBannerUploading] = useState(false);
 
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) {
@@ -1014,20 +1020,106 @@ const Admin = () => {
               <h3 className="font-medium mb-3">Imagens</h3>
               <div className="space-y-4">
                 <div>
-                  <Label>URL da Capa *</Label>
-                  <Input
-                    placeholder="https://..."
-                    value={form.cover_url}
-                    onChange={(e) => setForm({ ...form, cover_url: e.target.value })}
-                  />
+                  <Label>Capa *</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="URL ou faça upload"
+                      value={form.cover_url}
+                      onChange={(e) => setForm({ ...form, cover_url: e.target.value })}
+                      className="flex-1"
+                    />
+                    <input
+                      type="file"
+                      ref={coverInputRef}
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || !form.title) {
+                          toast({ title: 'Erro', description: 'Preencha o título primeiro', variant: 'destructive' });
+                          return;
+                        }
+                        setCoverUploading(true);
+                        const slug = form.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                        const ext = file.name.split('.').pop() || 'jpg';
+                        const path = `covers/${slug}/cover.${ext}`;
+                        const result = await uploadToR2(file, path);
+                        setCoverUploading(false);
+                        if (result.success) {
+                          setForm({ ...form, cover_url: result.url! });
+                          toast({ title: 'Upload concluído!' });
+                        } else {
+                          toast({ title: 'Erro', description: result.error, variant: 'destructive' });
+                        }
+                        if (coverInputRef.current) coverInputRef.current.value = '';
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      disabled={coverUploading}
+                      onClick={() => coverInputRef.current?.click()}
+                    >
+                      {coverUploading ? <span className="animate-spin">⏳</span> : <Upload className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  {form.cover_url && (
+                    <div className="mt-2 w-20 h-28 rounded overflow-hidden bg-secondary">
+                      <img src={form.cover_url} alt="Preview" className="w-full h-full object-cover" />
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <Label>URL do Banner (Opcional)</Label>
-                  <Input
-                    placeholder="Para obras destacadas"
-                    value={form.banner_url}
-                    onChange={(e) => setForm({ ...form, banner_url: e.target.value })}
-                  />
+                  <Label>Banner (Opcional)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="URL ou faça upload"
+                      value={form.banner_url}
+                      onChange={(e) => setForm({ ...form, banner_url: e.target.value })}
+                      className="flex-1"
+                    />
+                    <input
+                      type="file"
+                      ref={bannerInputRef}
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || !form.title) {
+                          toast({ title: 'Erro', description: 'Preencha o título primeiro', variant: 'destructive' });
+                          return;
+                        }
+                        setBannerUploading(true);
+                        const slug = form.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                        const ext = file.name.split('.').pop() || 'jpg';
+                        const path = `banners/${slug}/banner.${ext}`;
+                        const result = await uploadToR2(file, path);
+                        setBannerUploading(false);
+                        if (result.success) {
+                          setForm({ ...form, banner_url: result.url! });
+                          toast({ title: 'Upload concluído!' });
+                        } else {
+                          toast({ title: 'Erro', description: result.error, variant: 'destructive' });
+                        }
+                        if (bannerInputRef.current) bannerInputRef.current.value = '';
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      disabled={bannerUploading}
+                      onClick={() => bannerInputRef.current?.click()}
+                    >
+                      {bannerUploading ? <span className="animate-spin">⏳</span> : <Upload className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  {form.banner_url && (
+                    <div className="mt-2 h-20 rounded overflow-hidden bg-secondary">
+                      <img src={form.banner_url} alt="Preview" className="w-full h-full object-cover" />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1414,20 +1506,106 @@ const Admin = () => {
               <h3 className="font-medium mb-3">Imagens</h3>
               <div className="space-y-4">
                 <div>
-                  <Label>URL da Capa *</Label>
-                  <Input
-                    placeholder="https://..."
-                    value={form.cover_url}
-                    onChange={(e) => setForm({ ...form, cover_url: e.target.value })}
-                  />
+                  <Label>Capa *</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="URL ou faça upload"
+                      value={form.cover_url}
+                      onChange={(e) => setForm({ ...form, cover_url: e.target.value })}
+                      className="flex-1"
+                    />
+                    <input
+                      type="file"
+                      ref={editCoverInputRef}
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || !form.title) {
+                          toast({ title: 'Erro', description: 'Preencha o título primeiro', variant: 'destructive' });
+                          return;
+                        }
+                        setCoverUploading(true);
+                        const slug = form.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                        const ext = file.name.split('.').pop() || 'jpg';
+                        const path = `covers/${slug}/cover.${ext}`;
+                        const result = await uploadToR2(file, path);
+                        setCoverUploading(false);
+                        if (result.success) {
+                          setForm({ ...form, cover_url: result.url! });
+                          toast({ title: 'Upload concluído!' });
+                        } else {
+                          toast({ title: 'Erro', description: result.error, variant: 'destructive' });
+                        }
+                        if (editCoverInputRef.current) editCoverInputRef.current.value = '';
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      disabled={coverUploading}
+                      onClick={() => editCoverInputRef.current?.click()}
+                    >
+                      {coverUploading ? <span className="animate-spin">⏳</span> : <Upload className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  {form.cover_url && (
+                    <div className="mt-2 w-20 h-28 rounded overflow-hidden bg-secondary">
+                      <img src={form.cover_url} alt="Preview" className="w-full h-full object-cover" />
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <Label>URL do Banner (Opcional)</Label>
-                  <Input
-                    placeholder="Para obras destacadas"
-                    value={form.banner_url}
-                    onChange={(e) => setForm({ ...form, banner_url: e.target.value })}
-                  />
+                  <Label>Banner (Opcional)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="URL ou faça upload"
+                      value={form.banner_url}
+                      onChange={(e) => setForm({ ...form, banner_url: e.target.value })}
+                      className="flex-1"
+                    />
+                    <input
+                      type="file"
+                      ref={editBannerInputRef}
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || !form.title) {
+                          toast({ title: 'Erro', description: 'Preencha o título primeiro', variant: 'destructive' });
+                          return;
+                        }
+                        setBannerUploading(true);
+                        const slug = form.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                        const ext = file.name.split('.').pop() || 'jpg';
+                        const path = `banners/${slug}/banner.${ext}`;
+                        const result = await uploadToR2(file, path);
+                        setBannerUploading(false);
+                        if (result.success) {
+                          setForm({ ...form, banner_url: result.url! });
+                          toast({ title: 'Upload concluído!' });
+                        } else {
+                          toast({ title: 'Erro', description: result.error, variant: 'destructive' });
+                        }
+                        if (editBannerInputRef.current) editBannerInputRef.current.value = '';
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      disabled={bannerUploading}
+                      onClick={() => editBannerInputRef.current?.click()}
+                    >
+                      {bannerUploading ? <span className="animate-spin">⏳</span> : <Upload className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  {form.banner_url && (
+                    <div className="mt-2 h-20 rounded overflow-hidden bg-secondary">
+                      <img src={form.banner_url} alt="Preview" className="w-full h-full object-cover" />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
