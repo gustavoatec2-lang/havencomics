@@ -2,3 +2,6 @@ project_id = "bqgxaacwljfilxmxwqkn"
 
 [functions.add-admin]
 verify_jwt = false
+
+[functions.r2-upload]
+verify_jwt = false
