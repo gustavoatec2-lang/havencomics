@@ -37,10 +37,15 @@ interface FavoriteItem {
   };
 }
 
+interface UserRole {
+  role: 'admin' | 'moderator' | 'user' | 'dono';
+}
+
 const Profile = () => {
   const navigate = useNavigate();
   const { user, loading } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [userRoles, setUserRoles] = useState<string[]>([]);
   const [readingHistory, setReadingHistory] = useState<ReadingHistoryItem[]>([]);
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [activeTab, setActiveTab] = useState<'history' | 'favorites'>('history');
@@ -54,6 +59,7 @@ const Profile = () => {
   useEffect(() => {
     if (user) {
       fetchProfile();
+      fetchUserRoles();
       fetchReadingHistory();
       fetchFavorites();
     }
@@ -67,6 +73,15 @@ const Profile = () => {
       .single();
     
     if (data) setProfile(data);
+  };
+
+  const fetchUserRoles = async () => {
+    const { data } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user!.id);
+    
+    if (data) setUserRoles(data.map((r: UserRole) => r.role));
   };
 
   const fetchReadingHistory = async () => {
@@ -108,6 +123,19 @@ const Profile = () => {
     }
   };
 
+  const getRoleBadge = (role: string) => {
+    switch (role) {
+      case 'dono':
+        return <Badge key={role} className="gap-1 bg-gradient-to-r from-amber-500 to-yellow-400 text-black border-0"><Crown className="h-3 w-3" /> Dono</Badge>;
+      case 'admin':
+        return <Badge key={role} variant="destructive" className="gap-1">Admin</Badge>;
+      case 'moderator':
+        return <Badge key={role} variant="secondary" className="gap-1">Moderador</Badge>;
+      default:
+        return null;
+    }
+  };
+
   if (loading) {
     return <div className="min-h-screen bg-background flex items-center justify-center">Carregando...</div>;
   }
@@ -134,7 +162,8 @@ const Profile = () => {
                 <Mail className="h-4 w-4" />
                 <span className="text-sm">{user.email}</span>
               </div>
-              <div className="flex items-center gap-3 justify-center md:justify-start">
+              <div className="flex items-center gap-2 flex-wrap justify-center md:justify-start">
+                {userRoles.filter(r => r !== 'user').map(role => getRoleBadge(role))}
                 {profile && getTierBadge(profile.vip_tier)}
                 {profile?.vip_expires_at && profile.vip_tier !== 'free' && (
                   <span className="text-xs text-muted-foreground">
