@@ -15,6 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import JSZip from 'jszip';
+import { uploadToR2 } from '@/lib/r2-upload';
 interface MangaForm {
   title: string;
   type: string;
@@ -305,26 +306,20 @@ const Admin = () => {
         for (let i = 0; i < chapterFiles.length; i++) {
           const file = chapterFiles[i];
           const ext = file.name.split('.').pop() || 'jpg';
-          const fileName = `${mangaSlug}/cap-${chapterNum}/page-${String(i + 1).padStart(3, '0')}.${ext}`;
+          const filePath = `chapters/${mangaSlug}/cap-${chapterNum}/page-${String(i + 1).padStart(3, '0')}.${ext}`;
           
           setUploadProgress(`Capítulo ${chapterNum}: Enviando ${i + 1}/${chapterFiles.length}...`);
           
-          const { error: uploadError } = await supabase.storage
-            .from('chapter-pages')
-            .upload(fileName, file, { upsert: true });
+          const result = await uploadToR2(file, filePath);
           
-          if (uploadError) {
-            toast({ title: 'Erro no upload', description: uploadError.message, variant: 'destructive' });
+          if (!result.success) {
+            toast({ title: 'Erro no upload', description: result.error || 'Falha no upload', variant: 'destructive' });
             setIsSubmitting(false);
             setUploadProgress('');
             return;
           }
           
-          const { data: { publicUrl } } = supabase.storage
-            .from('chapter-pages')
-            .getPublicUrl(fileName);
-          
-          pagesArray.push(publicUrl);
+          pagesArray.push(result.url!);
         }
 
         const { error } = await supabase.from('chapters').insert({
@@ -362,26 +357,20 @@ const Admin = () => {
       for (let i = 0; i < uploadedPages.length; i++) {
         const file = uploadedPages[i];
         const ext = file.name.split('.').pop() || 'jpg';
-        const fileName = `${mangaSlug}/cap-${startNum}/page-${String(i + 1).padStart(3, '0')}.${ext}`;
+        const filePath = `chapters/${mangaSlug}/cap-${startNum}/page-${String(i + 1).padStart(3, '0')}.${ext}`;
         
         setUploadProgress(`Enviando ${i + 1}/${uploadedPages.length}...`);
         
-        const { error: uploadError } = await supabase.storage
-          .from('chapter-pages')
-          .upload(fileName, file, { upsert: true });
+        const result = await uploadToR2(file, filePath);
         
-        if (uploadError) {
-          toast({ title: 'Erro no upload', description: uploadError.message, variant: 'destructive' });
+        if (!result.success) {
+          toast({ title: 'Erro no upload', description: result.error || 'Falha no upload', variant: 'destructive' });
           setIsSubmitting(false);
           setUploadProgress('');
           return;
         }
         
-        const { data: { publicUrl } } = supabase.storage
-          .from('chapter-pages')
-          .getPublicUrl(fileName);
-        
-        pagesArray.push(publicUrl);
+        pagesArray.push(result.url!);
       }
       setUploadProgress('');
     } else {
