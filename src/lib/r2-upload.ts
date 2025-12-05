@@ -5,6 +5,41 @@ export interface UploadResult {
   url?: string;
   path?: string;
   error?: string;
+  storage?: 'r2' | 'supabase';
+}
+
+// Upload to Supabase Storage as fallback
+async function uploadToSupabaseStorage(
+  file: File,
+  path: string
+): Promise<UploadResult> {
+  try {
+    const { data, error } = await supabase.storage
+      .from('manga-content')
+      .upload(path, file, {
+        cacheControl: '3600',
+        upsert: true,
+      });
+
+    if (error) {
+      console.error('Supabase storage error:', error);
+      return { success: false, error: error.message };
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('manga-content')
+      .getPublicUrl(path);
+
+    return {
+      success: true,
+      url: urlData.publicUrl,
+      path: data.path,
+      storage: 'supabase',
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Erro no upload Supabase';
+    return { success: false, error: errorMessage };
+  }
 }
 
 export async function uploadToR2(
@@ -27,21 +62,25 @@ export async function uploadToR2(
     });
 
     if (response.error) {
-      return { success: false, error: response.error.message };
+      console.warn('R2 upload failed, trying Supabase storage fallback:', response.error.message);
+      return uploadToSupabaseStorage(file, path);
     }
 
     if (response.data?.error) {
-      return { success: false, error: response.data.error };
+      console.warn('R2 upload failed, trying Supabase storage fallback:', response.data.error);
+      return uploadToSupabaseStorage(file, path);
     }
 
     return {
       success: true,
       url: response.data.url,
       path: response.data.path,
+      storage: 'r2',
     };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Erro no upload';
-    return { success: false, error: errorMessage };
+    console.warn('R2 upload exception, trying Supabase storage fallback:', error);
+    // Fallback to Supabase storage
+    return uploadToSupabaseStorage(file, path);
   }
 }
 

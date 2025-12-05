@@ -12,10 +12,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const R2_ACCESS_KEY_ID = Deno.env.get('R2_ACCESS_KEY_ID')!;
-    const R2_SECRET_ACCESS_KEY = Deno.env.get('R2_SECRET_ACCESS_KEY')!;
-    const R2_ENDPOINT = Deno.env.get('R2_ENDPOINT')!;
-    const R2_BUCKET_NAME = Deno.env.get('R2_BUCKET_NAME')!;
+    const R2_ACCESS_KEY_ID = Deno.env.get('R2_ACCESS_KEY_ID');
+    const R2_SECRET_ACCESS_KEY = Deno.env.get('R2_SECRET_ACCESS_KEY');
+    const R2_ENDPOINT = Deno.env.get('R2_ENDPOINT');
+    const R2_BUCKET_NAME = Deno.env.get('R2_BUCKET_NAME');
+
+    // Check if R2 is configured
+    if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_ENDPOINT || !R2_BUCKET_NAME) {
+      console.error('R2 not configured properly');
+      return new Response(
+        JSON.stringify({ error: 'R2 não configurado' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Verify auth
     const authHeader = req.headers.get('Authorization');
@@ -93,11 +102,24 @@ Deno.serve(async (req) => {
 
     await s3Client.send(command);
 
-    // Construct public URL - R2 public bucket URL format
-    const publicUrl = `${R2_ENDPOINT.replace('.r2.cloudflarestorage.com', '.r2.dev')}/${path}`;
+    // Construct public URL for R2 public bucket
+    // R2 public URL format: https://<account-id>.r2.dev/<bucket-name>/<path>
+    // Or with custom domain: https://your-domain.com/<path>
+    // The endpoint is like: https://<account-id>.r2.cloudflarestorage.com
+    // Public bucket URL: https://pub-<hash>.r2.dev/<path>
     
-    // Alternative: if using custom domain or worker
-    // const publicUrl = `https://your-custom-domain.com/${path}`;
+    // Extract account info from endpoint and construct public URL
+    let publicUrl: string;
+    
+    // Check if R2_ENDPOINT contains the public URL pattern
+    if (R2_ENDPOINT.includes('.r2.dev')) {
+      // Already a public URL format
+      publicUrl = `${R2_ENDPOINT}/${path}`;
+    } else {
+      // Standard R2 endpoint - construct public URL
+      // Format: https://<bucket>.r2.dev/<path> for public buckets
+      publicUrl = `https://pub-${R2_BUCKET_NAME}.r2.dev/${path}`;
+    }
 
     console.log('Upload successful:', publicUrl);
 
