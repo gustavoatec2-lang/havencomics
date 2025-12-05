@@ -80,7 +80,7 @@ const Entrar = () => {
       <div className="w-full max-w-md">
         <Link to="/" className="flex items-center justify-center gap-2 mb-8">
           <BookOpen className="h-8 w-8" />
-          <span className="text-2xl font-display font-bold">MangaVerse</span>
+          <span className="text-2xl font-display font-bold">HavenComics</span>
         </Link>
 
         <div className="flex rounded-lg bg-secondary p-1 mb-6">

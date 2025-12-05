@@ -34,7 +34,7 @@ const Header = () => {
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 font-display text-xl font-bold">
           <BookOpen className="h-6 w-6" />
-          <span>MangaVerse</span>
+          <span>HavenComics</span>
         </Link>
 
         {/* Desktop Navigation */}
