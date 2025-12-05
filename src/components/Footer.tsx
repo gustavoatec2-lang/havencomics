@@ -10,7 +10,7 @@ const Footer = () => {
           <div className="space-y-4">
             <Link to="/" className="flex items-center gap-2 font-display text-xl font-bold">
               <BookOpen className="h-6 w-6 text-primary" />
-              <span>MangaVerse</span>
+              <span>HavenComics</span>
             </Link>
             <p className="text-sm text-muted-foreground">
               Sua plataforma para ler mangá, manhwa e manhua online.
@@ -75,7 +75,7 @@ const Footer = () => {
         {/* Copyright */}
         <div className="mt-12 pt-6 border-t border-border text-center">
           <p className="text-sm text-muted-foreground">
-            © 2025 MangaVerse. Todos os direitos reservados.
+            © 2025 HavenComics. Todos os direitos reservados.
           </p>
         </div>
       </div>

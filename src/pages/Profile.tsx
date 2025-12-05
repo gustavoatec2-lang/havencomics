@@ -194,7 +194,11 @@ const Profile = () => {
           </div>
           <div className="rounded-xl border border-border bg-card p-4 text-center">
             <TrendingUp className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
-            <p className="text-2xl font-bold">{profile?.vip_tier === 'free' ? 'Free' : profile?.vip_tier?.charAt(0).toUpperCase() + profile?.vip_tier?.slice(1)}</p>
+            <p className="text-2xl font-bold">
+              {!profile?.vip_tier || profile.vip_tier === 'free' 
+                ? 'Free' 
+                : profile.vip_tier.charAt(0).toUpperCase() + profile.vip_tier.slice(1)}
+            </p>
             <p className="text-xs text-muted-foreground">Plano Atual</p>
           </div>
         </div>
