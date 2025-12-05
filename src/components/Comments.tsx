@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MessageSquare, Send, Trash2 } from 'lucide-react';
+import { MessageSquare, Send, Trash2, Crown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,7 @@ interface Comment {
     username: string | null;
     vip_tier: string | null;
   };
+  roles?: string[];
 }
 
 interface CommentsProps {
@@ -76,19 +77,26 @@ const Comments = ({ mangaId, chapterNumber }: CommentsProps) => {
 
       if (error) throw error;
 
-      // Fetch profiles for each comment
+      // Fetch profiles and roles for each comment
       if (data && data.length > 0) {
         const userIds = [...new Set(data.map(c => c.user_id))];
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, username, vip_tier')
-          .in('id', userIds);
+        
+        const [profilesResult, rolesResult] = await Promise.all([
+          supabase.from('profiles').select('id, username, vip_tier').in('id', userIds),
+          supabase.from('user_roles').select('user_id, role').in('user_id', userIds)
+        ]);
 
-        const profileMap = new Map(profiles?.map(p => [p.id, p]));
+        const profileMap = new Map(profilesResult.data?.map(p => [p.id, p]));
+        const rolesMap = new Map<string, string[]>();
+        rolesResult.data?.forEach(r => {
+          const existing = rolesMap.get(r.user_id) || [];
+          rolesMap.set(r.user_id, [...existing, r.role]);
+        });
         
         const commentsWithProfiles = data.map(comment => ({
           ...comment,
           profile: profileMap.get(comment.user_id) || null,
+          roles: rolesMap.get(comment.user_id) || [],
         }));
 
         setComments(commentsWithProfiles);
@@ -247,17 +255,31 @@ const Comments = ({ mangaId, chapterNumber }: CommentsProps) => {
           comments.map((comment) => {
             const tier = comment.profile?.vip_tier || 'free';
             const badge = TIER_BADGES[tier] || TIER_BADGES.free;
+            const roles = comment.roles || [];
+            const isDono = roles.includes('dono');
+            const isAdmin = roles.includes('admin');
+            const isVipUser = tier !== 'free';
 
             return (
               <div key={comment.id} className="p-4 bg-secondary/30 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">
                       {comment.profile?.username || 'Usuário'}
                     </span>
-                    <Badge variant={badge.variant} className="text-xs">
-                      {badge.label}
-                    </Badge>
+                    {isDono && (
+                      <Badge className="text-xs gap-1 bg-gradient-to-r from-amber-500 to-yellow-400 text-black border-0">
+                        <Crown className="h-3 w-3" /> Dono
+                      </Badge>
+                    )}
+                    {isAdmin && !isDono && (
+                      <Badge variant="destructive" className="text-xs">Admin</Badge>
+                    )}
+                    {isVipUser && (
+                      <Badge variant={badge.variant} className="text-xs">
+                        {badge.label}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">
