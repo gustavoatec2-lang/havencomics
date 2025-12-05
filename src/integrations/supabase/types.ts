@@ -328,7 +328,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "user"
+      app_role: "admin" | "user" | "dono"
       manga_status: "ongoing" | "completed" | "hiatus" | "cancelled"
       manga_type: "manga" | "manhwa" | "manhua" | "novel" | "webtoon"
     }
@@ -458,7 +458,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "user"],
+      app_role: ["admin", "user", "dono"],
       manga_status: ["ongoing", "completed", "hiatus", "cancelled"],
       manga_type: ["manga", "manhwa", "manhua", "novel", "webtoon"],
     },
