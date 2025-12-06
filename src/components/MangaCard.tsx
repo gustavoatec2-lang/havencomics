@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Manga } from '@/types/manga';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { triggerPopunder } from '@/utils/popunder';
 
 interface MangaCardProps {
   manga: Manga;
@@ -22,6 +23,7 @@ const MangaCard = ({ manga, showRank, variant = 'default' }: MangaCardProps) => 
       <Link
         to={`/manga/${manga.id}`}
         className="flex items-center gap-4 p-3 rounded-lg bg-card hover:bg-secondary transition-all duration-200 group"
+        onClick={triggerPopunder}
       >
         {showRank && (
           <span className="text-2xl font-bold text-muted-foreground w-8 text-center">
@@ -68,6 +70,7 @@ const MangaCard = ({ manga, showRank, variant = 'default' }: MangaCardProps) => 
         "group relative block rounded-lg overflow-hidden bg-card transition-all duration-300 hover:scale-[1.02] hover:shadow-lg",
         variant === 'compact' && "aspect-[3/4]"
       )}
+      onClick={triggerPopunder}
     >
       {/* Cover Image */}
       <div className="relative aspect-[3/4.5] overflow-hidden">
@@ -76,13 +79,13 @@ const MangaCard = ({ manga, showRank, variant = 'default' }: MangaCardProps) => 
           alt={manga.title}
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
         />
-        
+
         {/* Gradient Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        
+
         {/* Type Badge */}
-        <Badge 
-          variant="secondary" 
+        <Badge
+          variant="secondary"
           className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm"
         >
           {manga.type}
@@ -90,8 +93,8 @@ const MangaCard = ({ manga, showRank, variant = 'default' }: MangaCardProps) => 
 
         {/* Highlight Badge */}
         {manga.isHighlight && (
-          <Badge 
-            variant="warning" 
+          <Badge
+            variant="warning"
             className="absolute top-2 left-2"
           >
             Destaque
@@ -99,8 +102,8 @@ const MangaCard = ({ manga, showRank, variant = 'default' }: MangaCardProps) => 
         )}
 
         {/* Status Badge */}
-        <Badge 
-          variant={statusColors[manga.status]} 
+        <Badge
+          variant={statusColors[manga.status]}
           className="absolute bottom-2 left-2"
         >
           {manga.status}

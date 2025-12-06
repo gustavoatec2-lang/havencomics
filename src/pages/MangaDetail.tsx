@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Manga, DbManga, dbToUiManga } from '@/types/manga';
 import { cn } from '@/lib/utils';
+import { triggerPopunder } from '@/utils/popunder';
 
 interface Chapter {
   id: string;
@@ -55,7 +56,7 @@ const MangaDetail = () => {
 
   const fetchReadingHistory = async () => {
     if (!user || !manga) return;
-    
+
     try {
       // Get reading history for this manga
       const { data } = await supabase
@@ -67,7 +68,7 @@ const MangaDetail = () => {
 
       if (data) {
         setReadingHistory(data);
-        
+
         // Mark all chapters up to last read as "read"
         if (data.last_chapter_number) {
           const readSet = new Set<number>();
@@ -312,10 +313,11 @@ const MangaDetail = () => {
                     to={`/manga/${manga.id}/ler/${chapter.number}`}
                     className={cn(
                       "flex items-center justify-between p-4 rounded-lg transition-colors group",
-                      isRead 
-                        ? "bg-muted/50 opacity-60" 
+                      isRead
+                        ? "bg-muted/50 opacity-60"
                         : "bg-card hover:bg-secondary"
                     )}
+                    onClick={triggerPopunder}
                   >
                     <div>
                       <h3 className={cn(
