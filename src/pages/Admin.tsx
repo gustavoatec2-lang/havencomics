@@ -92,17 +92,17 @@ interface ScrapedChapterData {
 
 // Proxy API Configurations
 const PROXY_APIS = {
+  scrapedo: {
+    name: '⚡ Scrape.do (Mais rápido)',
+    key: '79c685acdbdb41fcb0d07438d4c06aa063197a2195d',
+    buildUrl: (url: string, render: boolean) =>
+      `https://api.scrape.do?token=79c685acdbdb41fcb0d07438d4c06aa063197a2195d&url=${encodeURIComponent(url)}${render ? '&render=true' : ''}`
+  },
   scraperapi: {
     name: 'ScraperAPI',
     key: 'eb855778aa025de872984fb49aa7ca53',
     buildUrl: (url: string, render: boolean) =>
       `http://api.scraperapi.com?api_key=eb855778aa025de872984fb49aa7ca53&url=${encodeURIComponent(url)}${render ? '&render=true' : ''}`
-  },
-  scrapedo: {
-    name: 'Scrape.do',
-    key: '79c685acdbdb41fcb0d07438d4c06aa063197a2195d',
-    buildUrl: (url: string, render: boolean) =>
-      `https://api.scrape.do?token=79c685acdbdb41fcb0d07438d4c06aa063197a2195d&url=${encodeURIComponent(url)}${render ? '&render=true' : ''}`
   },
   scrapingant: {
     name: 'ScrapingAnt',
@@ -176,8 +176,8 @@ const Admin = () => {
   const [scrapedChapters, setScrapedChapters] = useState<ScrapedChapterData[]>([]);
   // For publishing
   const [publishingChapter, setPublishingChapter] = useState<number | null>(null);
-  // Proxy selection
-  const [selectedProxy, setSelectedProxy] = useState<ProxyType>('scraperapi');
+  // Proxy selection - default to fastest
+  const [selectedProxy, setSelectedProxy] = useState<ProxyType>('scrapedo');
 
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) {
