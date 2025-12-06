@@ -190,6 +190,7 @@ const Admin = () => {
   const multiZipRefs = useRef<(HTMLInputElement | null)[]>([]);
   const multiFileRefs = useRef<(HTMLInputElement | null)[]>([]);
   const multiFolderRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const batchFoldersRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) {
@@ -765,6 +766,76 @@ const Admin = () => {
 
     if (multiFolderRefs.current[index]) multiFolderRefs.current[index]!.value = '';
     toast({ title: 'Pasta carregada', description: `${imageFiles.length} imagens encontradas` });
+  };
+
+  // Extract chapter number from folder name (e.g., "capítulo 09" -> 9, "Cap 01" -> 1)
+  const extractChapterNumber = (folderPath: string): number | null => {
+    // Get the folder name from the path
+    const parts = folderPath.split('/');
+    const folderName = parts.length > 1 ? parts[0] : folderPath;
+
+    // Try to extract number from folder name
+    const match = folderName.match(/(\d+\.?\d*)/);
+    if (match) {
+      // Parse and return the number (removes leading zeros)
+      return parseFloat(match[1]);
+    }
+    return null;
+  };
+
+  // Handle batch folder selection - organizes by folder name
+  const handleBatchFoldersSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    // Group files by their parent folder
+    const folderMap = new Map<string, File[]>();
+
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith('image/')) return;
+
+      // webkitRelativePath gives us the folder structure
+      const relativePath = (file as any).webkitRelativePath || file.name;
+      const parts = relativePath.split('/');
+
+      // Get the first folder in the path (immediate parent of selected folder)
+      const folderName = parts.length > 1 ? parts[0] : 'default';
+
+      if (!folderMap.has(folderName)) {
+        folderMap.set(folderName, []);
+      }
+      folderMap.get(folderName)!.push(file);
+    });
+
+    // Convert to chapter entries
+    const newChapters: { number: string; files: File[]; fileCount: number }[] = [];
+
+    folderMap.forEach((files, folderName) => {
+      const chapterNum = extractChapterNumber(folderName);
+      if (chapterNum !== null) {
+        // Sort files by name
+        files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+        newChapters.push({
+          number: chapterNum.toString(),
+          files: files,
+          fileCount: files.length
+        });
+      }
+    });
+
+    // Sort chapters by number
+    newChapters.sort((a, b) => parseFloat(a.number) - parseFloat(b.number));
+
+    if (newChapters.length === 0) {
+      toast({ title: 'Erro', description: 'Nenhuma pasta com número de capítulo encontrada', variant: 'destructive' });
+      return;
+    }
+
+    setMultiChapters(newChapters);
+    toast({ title: 'Pastas organizadas!', description: `${newChapters.length} capítulos encontrados` });
+
+    if (batchFoldersRef.current) batchFoldersRef.current.value = '';
   };
 
   const addMoreChapter = () => {
@@ -2922,6 +2993,33 @@ const Admin = () => {
               {multiChapterMangaId && (
                 <p className="text-xs text-success">Obra selecionada ✓</p>
               )}
+            </div>
+
+            {/* Batch Folders Upload */}
+            <div className="p-3 border-2 border-dashed border-primary/50 rounded-lg bg-primary/5">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-primary font-medium">Upload Rápido - Várias Pastas</Label>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">
+                Selecione várias pastas de uma vez. O número do capítulo será extraído do nome da pasta (ex: "Capítulo 09", "Cap 01", "1", "02").
+              </p>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                ref={batchFoldersRef}
+                onChange={handleBatchFoldersSelect}
+                {...{ webkitdirectory: '', directory: '' } as any}
+              />
+              <Button
+                type="button"
+                variant="default"
+                className="w-full gap-2"
+                onClick={() => batchFoldersRef.current?.click()}
+              >
+                <FolderOpen className="h-4 w-4" /> Selecionar Pastas
+              </Button>
             </div>
 
             {/* Chapter Entries */}
