@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, BookOpen, BarChart2, CheckCircle, Search, Ticket, Copy, Trash2, Star, Image, Edit, FileText, Upload, FileArchive, ImagePlus, ChevronDown, ChevronUp, UserPlus, Shield, Globe, Loader2, X, Check } from 'lucide-react';
+import { Plus, BookOpen, BarChart2, CheckCircle, Search, Ticket, Copy, Trash2, Star, Image, Edit, FileText, Upload, FileArchive, ImagePlus, ChevronDown, ChevronUp, UserPlus, Shield, Globe, Loader2, X, Check, FolderOpen } from 'lucide-react';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -188,6 +188,7 @@ const Admin = () => {
   const [isMultiSubmitting, setIsMultiSubmitting] = useState(false);
   const multiZipRefs = useRef<(HTMLInputElement | null)[]>([]);
   const multiFileRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const multiFolderRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) {
@@ -698,6 +699,22 @@ const Admin = () => {
     ));
 
     if (multiFileRefs.current[index]) multiFileRefs.current[index]!.value = '';
+  };
+
+  const handleMultiFolderSelect = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    // Filter for images and sort by name
+    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+    imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+    setMultiChapters(prev => prev.map((ch, i) =>
+      i === index ? { ...ch, files: imageFiles, fileCount: imageFiles.length } : ch
+    ));
+
+    if (multiFolderRefs.current[index]) multiFolderRefs.current[index]!.value = '';
+    toast({ title: 'Pasta carregada', description: `${imageFiles.length} imagens encontradas` });
   };
 
   const addMoreChapter = () => {
@@ -2873,6 +2890,24 @@ const Admin = () => {
                       onClick={() => multiFileRefs.current[index]?.click()}
                     >
                       <ImagePlus className="h-4 w-4 mr-1" /> Imagens
+                    </Button>
+
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      ref={el => multiFolderRefs.current[index] = el}
+                      onChange={(e) => handleMultiFolderSelect(e, index)}
+                      {...{ webkitdirectory: '', directory: '' } as any}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => multiFolderRefs.current[index]?.click()}
+                    >
+                      <FolderOpen className="h-4 w-4 mr-1" /> Pasta
                     </Button>
 
                     {chapter.fileCount > 0 && (
