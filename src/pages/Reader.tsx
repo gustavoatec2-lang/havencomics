@@ -318,11 +318,10 @@ const Reader = () => {
             ))
           )}
 
-          {/* Bottom Banner Ad */}
-          <BannerAd />
-
-          {/* End of chapter */}
+          {/* End of chapter with Banner Ad */}
           <div className="p-8 text-center space-y-4 bg-card rounded-lg m-4">
+            {/* Bottom Banner Ad - Above Fim do Capítulo */}
+            <BannerAd />
             <p className="text-muted-foreground">Fim do Capítulo {currentChapter}</p>
             <div className="flex items-center justify-center gap-4">
               {prevChapter !== null && (
