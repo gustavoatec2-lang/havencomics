@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Manga, DbManga, dbToUiManga } from '@/types/manga';
+import { triggerPopunder } from '@/utils/popunder';
 
 const Index = () => {
   const [featuredManga, setFeaturedManga] = useState<Manga | null>(null);
@@ -79,7 +80,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       {/* Hero Section */}
       {featuredManga && <HeroSection manga={featuredManga} />}
 
@@ -143,7 +144,7 @@ const Index = () => {
                   {featuredManga.description}
                 </p>
                 <div className="flex items-center gap-3 justify-center md:justify-start">
-                  <Link to={`/manga/${featuredManga.id}`}>
+                  <Link to={`/manga/${featuredManga.id}`} onClick={triggerPopunder}>
                     <Button variant="default">Ver Detalhes</Button>
                   </Link>
                 </div>
@@ -171,9 +172,9 @@ const Index = () => {
             />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {top10.map((manga, index) => (
-                <MangaCard 
-                  key={manga.id} 
-                  manga={manga} 
+                <MangaCard
+                  key={manga.id}
+                  manga={manga}
                   variant="horizontal"
                   showRank={index + 1}
                 />
@@ -194,7 +195,7 @@ const Index = () => {
             Descubra milhares de obras
           </h2>
           <p className="text-muted-foreground max-w-xl mx-auto">
-            Navegue por nosso catálogo completo com filtros por gênero, tipo e status. 
+            Navegue por nosso catálogo completo com filtros por gênero, tipo e status.
             Encontre exatamente o que procura.
           </p>
           <Link to="/catalogo">

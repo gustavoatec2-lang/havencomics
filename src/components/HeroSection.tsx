@@ -3,6 +3,7 @@ import { Play, ChevronRight, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Manga } from '@/types/manga';
+import { triggerPopunder } from '@/utils/popunder';
 
 interface HeroSectionProps {
   manga: Manga;
@@ -10,7 +11,7 @@ interface HeroSectionProps {
 
 const HeroSection = ({ manga }: HeroSectionProps) => {
   const backgroundImage = manga.banner_url || manga.cover;
-  
+
   return (
     <section className="relative w-full min-h-[500px] md:min-h-[600px] overflow-hidden">
       {/* Background Image */}
@@ -62,13 +63,13 @@ const HeroSection = ({ manga }: HeroSectionProps) => {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-3 pt-2">
-            <Link to={`/manga/${manga.id}/ler/1`}>
+            <Link to={`/manga/${manga.id}/ler/1`} onClick={triggerPopunder}>
               <Button variant="default" size="lg" className="gap-2">
                 <Play className="h-4 w-4" fill="currentColor" />
                 Começar a Ler
               </Button>
             </Link>
-            <Link to={`/manga/${manga.id}`}>
+            <Link to={`/manga/${manga.id}`} onClick={triggerPopunder}>
               <Button variant="outline" size="lg" className="gap-2">
                 Ver Detalhes
                 <ChevronRight className="h-4 w-4" />

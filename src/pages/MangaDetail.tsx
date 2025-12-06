@@ -280,7 +280,7 @@ const MangaDetail = () => {
 
                 {/* Actions */}
                 <div className="flex items-center gap-3 justify-center md:justify-start">
-                  <Link to={`/manga/${manga.id}/ler/${continueChapter}`}>
+                  <Link to={`/manga/${manga.id}/ler/${continueChapter}`} onClick={triggerPopunder}>
                     <Button variant="default" size="lg" className="gap-2">
                       <Play className="h-4 w-4" fill="currentColor" />
                       {hasReadingHistory ? `Continuar do Cap. ${continueChapter}` : 'Começar a Ler'}
