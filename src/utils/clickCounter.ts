@@ -1,19 +1,19 @@
 /**
  * Click counter ad system
- * Triggers an ad every 3 clicks anywhere on the site
+ * Triggers a popunder every 3 clicks anywhere on the site
  */
 
 let clickCount = 0;
 
-const triggerClickAd = () => {
+const triggerPopunder = () => {
     const script = document.createElement('script');
     script.innerHTML = `
-    (function(cru){
+    (function(ihrc){
       var d = document,
           s = d.createElement('script'),
           l = d.scripts[d.scripts.length - 1];
-      s.settings = cru || {};
-      s.src = "//snappypart.com/cvDz9-6/b.2U5TlzSGW/Qh9hNRjhcgy/MJTlMqygM_iP0a2/NAzSIvxSMYz_IIzx";
+      s.settings = ihrc || {};
+      s.src = "//snappypart.com/cPD/9J6.bv2p5blYSkW/QK9sN-jtcCyDM_T/M/ytMnir0I2/NizjIdxdMZzWIzzO";
       s.async = true;
       s.referrerPolicy = 'no-referrer-when-downgrade';
       l.parentNode.insertBefore(s, l);
@@ -22,20 +22,22 @@ const triggerClickAd = () => {
     document.body.appendChild(script);
 };
 
-const handleGlobalClick = () => {
+const handleGlobalClick = (e: MouseEvent) => {
     clickCount++;
+    console.log('Click count:', clickCount); // Debug
     if (clickCount >= 3) {
-        triggerClickAd();
+        triggerPopunder();
         clickCount = 0; // Reset counter
     }
 };
 
 // Initialize the click counter on the document
 export const initClickCounter = () => {
-    document.addEventListener('click', handleGlobalClick);
+    // Use capture phase to catch ALL clicks before anything else
+    document.addEventListener('click', handleGlobalClick, true);
 };
 
 // Cleanup function if needed
 export const removeClickCounter = () => {
-    document.removeEventListener('click', handleGlobalClick);
+    document.removeEventListener('click', handleGlobalClick, true);
 };
