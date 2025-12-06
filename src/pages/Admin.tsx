@@ -179,6 +179,16 @@ const Admin = () => {
   // Proxy selection - default to fastest
   const [selectedProxy, setSelectedProxy] = useState<ProxyType>('scrapedo');
 
+  // Multiple Chapters Upload States
+  const [isMultiChapterModalOpen, setIsMultiChapterModalOpen] = useState(false);
+  const [multiChapterMangaId, setMultiChapterMangaId] = useState('');
+  const [multiChapterSearch, setMultiChapterSearch] = useState('');
+  const [multiChapters, setMultiChapters] = useState<{ number: string; files: File[]; fileCount: number }[]>([{ number: '', files: [], fileCount: 0 }]);
+  const [multiUploadProgress, setMultiUploadProgress] = useState('');
+  const [isMultiSubmitting, setIsMultiSubmitting] = useState(false);
+  const multiZipRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const multiFileRefs = useRef<(HTMLInputElement | null)[]>([]);
+
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) {
       navigate('/entrar');
@@ -635,6 +645,135 @@ const Admin = () => {
       setSelectedMangaChapters(prev => prev.filter(c => c.id !== chapterId));
       fetchStats();
     }
+  };
+
+  // ==================== Multiple Chapters Upload Functions ====================
+
+  const handleMultiZipUpload = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const imageFiles: File[] = [];
+
+      const entries = Object.keys(zip.files).sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true })
+      );
+
+      for (const fileName of entries) {
+        const zipEntry = zip.files[fileName];
+        if (zipEntry.dir) continue;
+
+        const ext = fileName.split('.').pop()?.toLowerCase();
+        if (!['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '')) continue;
+
+        const blob = await zipEntry.async('blob');
+        const imageFile = new File([blob], fileName.split('/').pop() || fileName, {
+          type: `image/${ext === 'jpg' ? 'jpeg' : ext}`
+        });
+        imageFiles.push(imageFile);
+      }
+
+      setMultiChapters(prev => prev.map((ch, i) =>
+        i === index ? { ...ch, files: imageFiles, fileCount: imageFiles.length } : ch
+      ));
+      toast({ title: 'ZIP extraído', description: `${imageFiles.length} imagens encontradas` });
+    } catch (err) {
+      toast({ title: 'Erro', description: 'Falha ao extrair ZIP', variant: 'destructive' });
+    }
+
+    if (multiZipRefs.current[index]) multiZipRefs.current[index]!.value = '';
+  };
+
+  const handleMultiFileSelect = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+    imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+    setMultiChapters(prev => prev.map((ch, i) =>
+      i === index ? { ...ch, files: [...ch.files, ...imageFiles], fileCount: ch.fileCount + imageFiles.length } : ch
+    ));
+
+    if (multiFileRefs.current[index]) multiFileRefs.current[index]!.value = '';
+  };
+
+  const addMoreChapter = () => {
+    setMultiChapters(prev => [...prev, { number: '', files: [], fileCount: 0 }]);
+  };
+
+  const removeChapterEntry = (index: number) => {
+    setMultiChapters(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleMultiChapterSubmit = async () => {
+    if (!multiChapterMangaId) {
+      toast({ title: 'Erro', description: 'Selecione uma obra', variant: 'destructive' });
+      return;
+    }
+
+    const validChapters = multiChapters.filter(ch => ch.number && ch.files.length > 0);
+    if (validChapters.length === 0) {
+      toast({ title: 'Erro', description: 'Adicione pelo menos um capítulo com número e imagens', variant: 'destructive' });
+      return;
+    }
+
+    setIsMultiSubmitting(true);
+    const manga = mangas.find(m => m.id === multiChapterMangaId);
+    const mangaSlug = manga?.slug || multiChapterMangaId;
+
+    let successCount = 0;
+
+    for (let i = 0; i < validChapters.length; i++) {
+      const chapter = validChapters[i];
+      const chapterNum = parseFloat(chapter.number);
+      setMultiUploadProgress(`Capítulo ${chapterNum}: Enviando 0/${chapter.files.length}...`);
+
+      const pagesArray: string[] = [];
+
+      for (let j = 0; j < chapter.files.length; j++) {
+        const file = chapter.files[j];
+        const ext = file.name.split('.').pop() || 'jpg';
+        const filePath = `chapters/${mangaSlug}/cap-${chapterNum}/page-${String(j + 1).padStart(3, '0')}.${ext}`;
+
+        setMultiUploadProgress(`Capítulo ${chapterNum}: Enviando ${j + 1}/${chapter.files.length}...`);
+
+        const result = await uploadToR2(file, filePath);
+
+        if (!result.success) {
+          toast({ title: 'Erro', description: `Capítulo ${chapterNum}: ${result.error}`, variant: 'destructive' });
+          continue;
+        }
+
+        pagesArray.push(result.url!);
+      }
+
+      if (pagesArray.length > 0) {
+        const { error } = await supabase.from('chapters').insert({
+          manga_id: multiChapterMangaId,
+          number: chapterNum,
+          title: null,
+          pages: pagesArray,
+        });
+
+        if (error) {
+          toast({ title: 'Erro', description: `Capítulo ${chapterNum}: ${error.message}`, variant: 'destructive' });
+        } else {
+          successCount++;
+        }
+      }
+    }
+
+    setMultiUploadProgress('');
+    setIsMultiSubmitting(false);
+    toast({ title: 'Sucesso!', description: `${successCount} capítulo(s) adicionado(s)` });
+    setIsMultiChapterModalOpen(false);
+    setMultiChapters([{ number: '', files: [], fileCount: 0 }]);
+    setMultiChapterMangaId('');
+    setMultiChapterSearch('');
+    fetchStats();
   };
 
   // ==================== PlumaComics Scraper Functions ====================
@@ -1282,6 +1421,9 @@ const Admin = () => {
                 </Button>
                 <Button variant="outline" className="gap-2" onClick={() => setIsChapterModalOpen(true)}>
                   <FileText className="h-4 w-4" /> Adicionar Novo Capítulo
+                </Button>
+                <Button variant="outline" className="gap-2" onClick={() => setIsMultiChapterModalOpen(true)}>
+                  <Plus className="h-4 w-4" /> Multiple Caps
                 </Button>
                 <Button variant="outline" className="gap-2" onClick={() => navigate('/catalogo')}>
                   <BookOpen className="h-4 w-4" /> Ver Catálogo
@@ -2630,6 +2772,152 @@ const Admin = () => {
                 )}
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Multiple Chapters Modal */}
+      <Dialog open={isMultiChapterModalOpen} onOpenChange={setIsMultiChapterModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Adicionar Múltiplos Capítulos</DialogTitle>
+            <DialogDescription>Upload de vários capítulos de uma vez</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Manga Selector */}
+            <div className="space-y-2">
+              <Label>Selecionar Obra</Label>
+              <Input
+                placeholder="Buscar obra..."
+                value={multiChapterSearch}
+                onChange={(e) => setMultiChapterSearch(e.target.value)}
+              />
+              {multiChapterSearch && (
+                <div className="max-h-32 overflow-y-auto border border-border rounded-lg">
+                  {mangas
+                    .filter(m => m.title.toLowerCase().includes(multiChapterSearch.toLowerCase()))
+                    .slice(0, 5)
+                    .map(m => (
+                      <div
+                        key={m.id}
+                        className={`p-2 cursor-pointer hover:bg-secondary ${multiChapterMangaId === m.id ? 'bg-secondary' : ''}`}
+                        onClick={() => {
+                          setMultiChapterMangaId(m.id);
+                          setMultiChapterSearch(m.title);
+                        }}
+                      >
+                        {m.title}
+                      </div>
+                    ))}
+                </div>
+              )}
+              {multiChapterMangaId && (
+                <p className="text-xs text-success">Obra selecionada ✓</p>
+              )}
+            </div>
+
+            {/* Chapter Entries */}
+            <div className="space-y-3">
+              {multiChapters.map((chapter, index) => (
+                <div key={index} className="p-3 border border-border rounded-lg space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Capítulo {index + 1}</Label>
+                    {multiChapters.length > 1 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeChapterEntry(index)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+
+                  <Input
+                    placeholder="Número do capítulo (ex: 1, 1.5, 2)"
+                    value={chapter.number}
+                    onChange={(e) => setMultiChapters(prev => prev.map((ch, i) =>
+                      i === index ? { ...ch, number: e.target.value } : ch
+                    ))}
+                  />
+
+                  <div className="flex gap-2">
+                    <input
+                      type="file"
+                      accept=".zip"
+                      className="hidden"
+                      ref={el => multiZipRefs.current[index] = el}
+                      onChange={(e) => handleMultiZipUpload(e, index)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => multiZipRefs.current[index]?.click()}
+                    >
+                      <FileArchive className="h-4 w-4 mr-1" /> ZIP
+                    </Button>
+
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      ref={el => multiFileRefs.current[index] = el}
+                      onChange={(e) => handleMultiFileSelect(e, index)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => multiFileRefs.current[index]?.click()}
+                    >
+                      <ImagePlus className="h-4 w-4 mr-1" /> Imagens
+                    </Button>
+
+                    {chapter.fileCount > 0 && (
+                      <Badge variant="success" className="ml-auto">
+                        {chapter.fileCount}+ imagens
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Add More Button */}
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full gap-2"
+              onClick={addMoreChapter}
+            >
+              <Plus className="h-4 w-4" /> Adicionar Mais
+            </Button>
+
+            {/* Progress */}
+            {multiUploadProgress && (
+              <div className="p-2 bg-secondary rounded text-sm text-center">
+                {multiUploadProgress}
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <Button
+              className="w-full gap-2"
+              onClick={handleMultiChapterSubmit}
+              disabled={isMultiSubmitting}
+            >
+              {isMultiSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Enviando...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4" /> Enviar Tudo
+                </>
+              )}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
