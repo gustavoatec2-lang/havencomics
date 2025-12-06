@@ -1,13 +1,19 @@
 import { useEffect, useRef } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 
 /**
  * Banner Ad component that loads the ad script
  * Displays at top and bottom of chapters
+ * Hidden for VIP users (silver/gold)
  */
 const BannerAd = () => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const { isVip } = useAuth();
 
     useEffect(() => {
+        // Don't show ads for VIP users
+        if (isVip) return;
+
         if (containerRef.current) {
             // Create and inject the banner ad script
             const script = document.createElement('script');
@@ -25,7 +31,10 @@ const BannerAd = () => {
       `;
             containerRef.current.appendChild(script);
         }
-    }, []);
+    }, [isVip]);
+
+    // Don't render anything for VIP users
+    if (isVip) return null;
 
     return (
         <div

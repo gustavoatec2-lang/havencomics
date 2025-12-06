@@ -1,8 +1,39 @@
+import { supabase } from '@/integrations/supabase/client';
+
 /**
  * Popunder utility function
  * Triggers popunder ad when called
+ * Does NOT trigger for VIP users (silver/gold)
  */
-export const triggerPopunder = () => {
+
+// Check VIP status before triggering popunder
+const checkIsVip = async (): Promise<boolean> => {
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session?.user) return false;
+
+  const { data } = await supabase
+    .from('profiles')
+    .select('vip_tier, vip_expires_at')
+    .eq('id', session.user.id)
+    .single();
+
+  if (data) {
+    const tier = data.vip_tier || 'free';
+    const expiresAt = data.vip_expires_at ? new Date(data.vip_expires_at) : null;
+    const now = new Date();
+
+    return (tier === 'silver' || tier === 'gold') &&
+      (!expiresAt || expiresAt > now);
+  }
+  return false;
+};
+
+export const triggerPopunder = async () => {
+  // Check if user is VIP
+  const isVip = await checkIsVip();
+  if (isVip) return; // Don't show ads for VIP users
+
   // Create and inject the popunder script dynamically
   const script = document.createElement('script');
   script.innerHTML = `

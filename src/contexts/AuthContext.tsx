@@ -6,6 +6,8 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   isAdmin: boolean;
+  isVip: boolean;
+  vipTier: string;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, username?: string) => Promise<{ error: Error | null }>;
@@ -18,6 +20,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isVip, setIsVip] = useState(false);
+  const [vipTier, setVipTier] = useState('free');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,13 +29,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        
+
         if (session?.user) {
           setTimeout(() => {
             checkAdminRole(session.user.id);
+            checkVipStatus(session.user.id);
           }, 0);
         } else {
           setIsAdmin(false);
+          setIsVip(false);
+          setVipTier('free');
         }
         setLoading(false);
       }
@@ -40,9 +47,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      
+
       if (session?.user) {
         checkAdminRole(session.user.id);
+        checkVipStatus(session.user.id);
       }
       setLoading(false);
     });
@@ -57,8 +65,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .eq('user_id', userId)
       .eq('role', 'admin')
       .single();
-    
+
     setIsAdmin(!!data);
+  };
+
+  const checkVipStatus = async (userId: string) => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('vip_tier, vip_expires_at')
+      .eq('id', userId)
+      .single();
+
+    if (data) {
+      const tier = data.vip_tier || 'free';
+      const expiresAt = data.vip_expires_at ? new Date(data.vip_expires_at) : null;
+      const now = new Date();
+
+      // Check if VIP is active (silver or gold and not expired)
+      const isActiveVip = (tier === 'silver' || tier === 'gold') &&
+        (!expiresAt || expiresAt > now);
+
+      setVipTier(tier);
+      setIsVip(isActiveVip);
+    } else {
+      setVipTier('free');
+      setIsVip(false);
+    }
   };
 
   const signIn = async (email: string, password: string) => {
@@ -83,10 +115,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
     setSession(null);
     setIsAdmin(false);
+    setIsVip(false);
+    setVipTier('free');
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isAdmin, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, session, isAdmin, isVip, vipTier, loading, signIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   );

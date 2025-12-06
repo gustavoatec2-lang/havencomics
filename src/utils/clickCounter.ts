@@ -1,9 +1,13 @@
+import { supabase } from '@/integrations/supabase/client';
+
 /**
  * Click counter ad system
  * Triggers a popunder every 3 clicks anywhere on the site
+ * Does NOT trigger for VIP users (silver/gold)
  */
 
 let clickCount = 0;
+let isVipUser = false;
 
 const triggerPopunder = () => {
     const script = document.createElement('script');
@@ -23,16 +27,54 @@ const triggerPopunder = () => {
 };
 
 const handleGlobalClick = (e: MouseEvent) => {
+    // Don't count clicks for VIP users
+    if (isVipUser) return;
+
     clickCount++;
-    console.log('Click count:', clickCount); // Debug
     if (clickCount >= 3) {
         triggerPopunder();
         clickCount = 0; // Reset counter
     }
 };
 
+// Check VIP status from Supabase
+const checkVipStatus = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.user) {
+        isVipUser = false;
+        return;
+    }
+
+    const { data } = await supabase
+        .from('profiles')
+        .select('vip_tier, vip_expires_at')
+        .eq('id', session.user.id)
+        .single();
+
+    if (data) {
+        const tier = data.vip_tier || 'free';
+        const expiresAt = data.vip_expires_at ? new Date(data.vip_expires_at) : null;
+        const now = new Date();
+
+        // Check if VIP is active (silver or gold and not expired)
+        isVipUser = (tier === 'silver' || tier === 'gold') &&
+            (!expiresAt || expiresAt > now);
+    } else {
+        isVipUser = false;
+    }
+};
+
 // Initialize the click counter on the document
 export const initClickCounter = () => {
+    // Check VIP status initially
+    checkVipStatus();
+
+    // Listen for auth changes to update VIP status
+    supabase.auth.onAuthStateChange(() => {
+        checkVipStatus();
+    });
+
     // Use capture phase to catch ALL clicks before anything else
     document.addEventListener('click', handleGlobalClick, true);
 };

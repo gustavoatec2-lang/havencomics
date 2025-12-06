@@ -1,13 +1,19 @@
 import { useEffect, useRef } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 
 /**
  * In-chapter ads component
  * Loads two ad scripts that display within chapter content
+ * Hidden for VIP users (silver/gold)
  */
 const ChapterAds = () => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const { isVip } = useAuth();
 
     useEffect(() => {
+        // Don't show ads for VIP users
+        if (isVip) return;
+
         if (containerRef.current) {
             // First ad script (qcybzza)
             const script1 = document.createElement('script');
@@ -41,7 +47,10 @@ const ChapterAds = () => {
       `;
             containerRef.current.appendChild(script2);
         }
-    }, []);
+    }, [isVip]);
+
+    // Don't render anything for VIP users
+    if (isVip) return null;
 
     return (
         <div
