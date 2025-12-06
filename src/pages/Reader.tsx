@@ -2,6 +2,8 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Home, List, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Comments from '@/components/Comments';
+import BannerAd from '@/components/BannerAd';
+import ChapterAds from '@/components/ChapterAds';
 import { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -48,7 +50,7 @@ const Reader = () => {
   // Track reading time
   useEffect(() => {
     readingStartTime.current = Date.now();
-    
+
     return () => {
       if (user && manga) {
         const timeSpent = Math.floor((Date.now() - readingStartTime.current) / 1000);
@@ -59,7 +61,7 @@ const Reader = () => {
 
   const saveReadingHistory = async () => {
     if (!user || !manga || !currentChapterData) return;
-    
+
     try {
       // Check if history exists
       const { data: existing } = await supabase
@@ -98,7 +100,7 @@ const Reader = () => {
 
   const updateReadingTime = async (seconds: number) => {
     if (!user || !manga || seconds < 5) return; // Only save if read more than 5 seconds
-    
+
     try {
       // Update reading_history
       const { data: existing } = await supabase
@@ -245,12 +247,12 @@ const Reader = () => {
   };
 
   return (
-    <div 
+    <div
       className="min-h-screen bg-background"
       onClick={() => setShowControls(!showControls)}
     >
       {/* Top Bar */}
-      <header 
+      <header
         className={cn(
           "fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur border-b border-border transition-transform duration-300",
           !showControls && "-translate-y-full"
@@ -292,6 +294,10 @@ const Reader = () => {
       {/* Pages */}
       <main className="pt-14 pb-20">
         <div className="max-w-3xl mx-auto">
+          {/* Top Banner Ad */}
+          <BannerAd />
+          {/* In-Chapter Ads */}
+          <ChapterAds />
           {pages.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               Nenhuma página disponível para este capítulo.
@@ -311,6 +317,9 @@ const Reader = () => {
               </div>
             ))
           )}
+
+          {/* Bottom Banner Ad */}
+          <BannerAd />
 
           {/* End of chapter */}
           <div className="p-8 text-center space-y-4 bg-card rounded-lg m-4">
@@ -344,7 +353,7 @@ const Reader = () => {
       </main>
 
       {/* Bottom Bar */}
-      <footer 
+      <footer
         className={cn(
           "fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur border-t border-border transition-transform duration-300",
           !showControls && "translate-y-full"
