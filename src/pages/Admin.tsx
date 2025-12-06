@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, BookOpen, BarChart2, CheckCircle, Search, Ticket, Copy, Trash2, Star, Image, Edit, FileText, Upload, FileArchive, ImagePlus, ChevronDown, ChevronUp, UserPlus, Shield } from 'lucide-react';
+import { Plus, BookOpen, BarChart2, CheckCircle, Search, Ticket, Copy, Trash2, Star, Image, Edit, FileText, Upload, FileArchive, ImagePlus, ChevronDown, ChevronUp, UserPlus, Shield, Globe, Loader2, X, Check } from 'lucide-react';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -61,6 +61,71 @@ interface VipCode {
   created_at: string;
 }
 
+// PlumaComics Scraper Types
+interface PlumaManga {
+  title: string;
+  slug: string;
+  cover: string;
+  url: string;
+  selected: boolean;
+}
+
+interface PlumaChapter {
+  number: number;
+  title: string;
+  url: string;
+  date: string;
+  selected: boolean;
+}
+
+interface PlumaPage {
+  index: number;
+  url: string;
+}
+
+interface ScrapedChapterData {
+  chapterNumber: number;
+  pages: PlumaPage[];
+  mangaTitle: string;
+  mangaSlug: string;
+}
+
+// Proxy API Configurations
+const PROXY_APIS = {
+  scraperapi: {
+    name: 'ScraperAPI',
+    key: 'eb855778aa025de872984fb49aa7ca53',
+    buildUrl: (url: string, render: boolean) =>
+      `http://api.scraperapi.com?api_key=eb855778aa025de872984fb49aa7ca53&url=${encodeURIComponent(url)}${render ? '&render=true' : ''}`
+  },
+  scrapedo: {
+    name: 'Scrape.do',
+    key: '79c685acdbdb41fcb0d07438d4c06aa063197a2195d',
+    buildUrl: (url: string, render: boolean) =>
+      `https://api.scrape.do?token=79c685acdbdb41fcb0d07438d4c06aa063197a2195d&url=${encodeURIComponent(url)}${render ? '&render=true' : ''}`
+  },
+  scrapingant: {
+    name: 'ScrapingAnt',
+    key: '54d5a2ba397149579df44833368253b1',
+    buildUrl: (url: string, render: boolean) =>
+      `https://api.scrapingant.com/v2/general?x-api-key=54d5a2ba397149579df44833368253b1&url=${encodeURIComponent(url)}${render ? '&browser=true' : ''}`
+  },
+  abstractapi: {
+    name: 'AbstractAPI',
+    key: 'cbe8d524e87a4d17a5a1830fcc825f54',
+    buildUrl: (url: string, _render: boolean) =>
+      `https://scrape.abstractapi.com/v1/?api_key=cbe8d524e87a4d17a5a1830fcc825f54&url=${encodeURIComponent(url)}`
+  },
+  proxyscrape: {
+    name: 'ProxyScrape',
+    key: 'zz3ds84rezvt4o8ht704',
+    buildUrl: (url: string, _render: boolean) =>
+      `https://api.proxyscrape.com/v3/accounts/freebies/scraperapi/request?auth=zz3ds84rezvt4o8ht704&url=${encodeURIComponent(url)}`
+  }
+} as const;
+
+type ProxyType = keyof typeof PROXY_APIS;
+
 const Admin = () => {
   const navigate = useNavigate();
   const { user, isAdmin, loading } = useAuth();
@@ -96,6 +161,24 @@ const Admin = () => {
   const [coverUploading, setCoverUploading] = useState(false);
   const [bannerUploading, setBannerUploading] = useState(false);
 
+  // PlumaComics Scraper States
+  const [isScrapeModalOpen, setIsScrapeModalOpen] = useState(false);
+  const [scrapeSource, setScrapeSource] = useState<'plumacomics' | 'nexustoons' | 'coming_soon'>('plumacomics');
+  const [scrapeStep, setScrapeStep] = useState<'source' | 'mangas' | 'chapters' | 'pages' | 'publish'>('source');
+  const [isScraping, setIsScraping] = useState(false);
+  const [scrapeStatus, setScrapeStatus] = useState('');
+  // Manga list
+  const [plumaMangas, setPlumaMangas] = useState<PlumaManga[]>([]);
+  const [selectedPlumaManga, setSelectedPlumaManga] = useState<PlumaManga | null>(null);
+  // Chapter list
+  const [plumaChapters, setPlumaChapters] = useState<PlumaChapter[]>([]);
+  // Scraped chapter pages
+  const [scrapedChapters, setScrapedChapters] = useState<ScrapedChapterData[]>([]);
+  // For publishing
+  const [publishingChapter, setPublishingChapter] = useState<number | null>(null);
+  // Proxy selection
+  const [selectedProxy, setSelectedProxy] = useState<ProxyType>('scraperapi');
+
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) {
       navigate('/entrar');
@@ -123,7 +206,7 @@ const Admin = () => {
   const fetchStats = async () => {
     const { data: mangasData } = await supabase.from('mangas').select('status');
     const { data: chaptersData } = await supabase.from('chapters').select('id');
-    
+
     if (mangasData) {
       setStats({
         total: mangasData.length,
@@ -147,7 +230,7 @@ const Admin = () => {
     setIsSubmitting(true);
     const quantity = parseInt(vipForm.quantity);
     const duration = parseInt(vipForm.duration);
-    
+
     const codes = [];
     for (let i = 0; i < quantity; i++) {
       codes.push({
@@ -158,9 +241,9 @@ const Admin = () => {
     }
 
     const { error } = await supabase.from('vip_codes').insert(codes);
-    
+
     setIsSubmitting(false);
-    
+
     if (error) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     } else {
@@ -194,7 +277,7 @@ const Admin = () => {
 
     setIsSubmitting(true);
     const slug = form.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    
+
     const { error } = await supabase.from('mangas').insert([{
       title: form.title,
       slug,
@@ -214,7 +297,7 @@ const Admin = () => {
     }]);
 
     setIsSubmitting(false);
-    
+
     if (error) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     } else {
@@ -226,7 +309,7 @@ const Admin = () => {
     }
   };
 
-  const filteredMangas = mangas.filter(m => 
+  const filteredMangas = mangas.filter(m =>
     m.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -274,12 +357,12 @@ const Admin = () => {
       // Multiple chapters - organize files by folder names or split evenly
       // Group files by folder prefix (e.g., "cap01/", "cap02/", "1/", "2/")
       const filesByChapter: Map<number, File[]> = new Map();
-      
+
       for (const file of uploadedPages) {
         // Check if file has folder structure like "cap01/page.jpg" or "1/page.jpg"
         const pathParts = file.name.split('/');
         let chapterNum = startNum;
-        
+
         if (pathParts.length > 1) {
           const folderName = pathParts[0];
           const match = folderName.match(/(\d+)/);
@@ -292,7 +375,7 @@ const Admin = () => {
           const fileIndex = uploadedPages.indexOf(file);
           chapterNum = startNum + Math.floor(fileIndex / pagesPerChapter);
         }
-        
+
         if (chapterNum >= startNum && chapterNum <= endNum) {
           if (!filesByChapter.has(chapterNum)) {
             filesByChapter.set(chapterNum, []);
@@ -305,26 +388,26 @@ const Admin = () => {
       for (let chapterNum = startNum; chapterNum <= endNum; chapterNum++) {
         const chapterFiles = filesByChapter.get(chapterNum) || [];
         if (chapterFiles.length === 0) continue;
-        
+
         setUploadProgress(`Capítulo ${chapterNum}: Enviando 0/${chapterFiles.length}...`);
-        
+
         const pagesArray: string[] = [];
         for (let i = 0; i < chapterFiles.length; i++) {
           const file = chapterFiles[i];
           const ext = file.name.split('.').pop() || 'jpg';
           const filePath = `chapters/${mangaSlug}/cap-${chapterNum}/page-${String(i + 1).padStart(3, '0')}.${ext}`;
-          
+
           setUploadProgress(`Capítulo ${chapterNum}: Enviando ${i + 1}/${chapterFiles.length}...`);
-          
+
           const result = await uploadToR2(file, filePath);
-          
+
           if (!result.success) {
             toast({ title: 'Erro no upload', description: result.error || 'Falha no upload', variant: 'destructive' });
             setIsSubmitting(false);
             setUploadProgress('');
             return;
           }
-          
+
           pagesArray.push(result.url!);
         }
 
@@ -334,14 +417,14 @@ const Admin = () => {
           title: null,
           pages: pagesArray,
         });
-        
+
         if (error) {
           toast({ title: 'Erro', description: `Capítulo ${chapterNum}: ${error.message}`, variant: 'destructive' });
         } else {
           chaptersCreated++;
         }
       }
-      
+
       setUploadProgress('');
       setIsSubmitting(false);
       toast({ title: 'Sucesso!', description: `${chaptersCreated} capítulo(s) adicionado(s)` });
@@ -359,37 +442,37 @@ const Admin = () => {
 
     if (uploadMode === 'file') {
       setUploadProgress(`Enviando 0/${uploadedPages.length}...`);
-      
+
       for (let i = 0; i < uploadedPages.length; i++) {
         const file = uploadedPages[i];
         const ext = file.name.split('.').pop() || 'jpg';
         const filePath = `chapters/${mangaSlug}/cap-${startNum}/page-${String(i + 1).padStart(3, '0')}.${ext}`;
-        
+
         setUploadProgress(`Enviando ${i + 1}/${uploadedPages.length}...`);
-        
+
         const result = await uploadToR2(file, filePath);
-        
+
         if (!result.success) {
           toast({ title: 'Erro no upload', description: result.error || 'Falha no upload', variant: 'destructive' });
           setIsSubmitting(false);
           setUploadProgress('');
           return;
         }
-        
+
         pagesArray.push(result.url!);
       }
       setUploadProgress('');
     } else {
       pagesArray = urlPages;
     }
-    
+
     const { error } = await supabase.from('chapters').insert({
       manga_id: chapterForm.manga_id,
       number: startNum,
       title: chapterForm.title || null,
       pages: pagesArray,
     });
-    
+
     setIsSubmitting(false);
     if (error) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
@@ -407,42 +490,42 @@ const Admin = () => {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    
+
     const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
     imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     setUploadedPages(prev => [...prev, ...imageFiles]);
-    
+
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     setUploadProgress('Extraindo ZIP...');
-    
+
     try {
       const zip = await JSZip.loadAsync(file);
       const imageFiles: File[] = [];
-      
-      const entries = Object.keys(zip.files).sort((a, b) => 
+
+      const entries = Object.keys(zip.files).sort((a, b) =>
         a.localeCompare(b, undefined, { numeric: true })
       );
-      
+
       for (const fileName of entries) {
         const zipEntry = zip.files[fileName];
         if (zipEntry.dir) continue;
-        
+
         const ext = fileName.split('.').pop()?.toLowerCase();
         if (!['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '')) continue;
-        
+
         const blob = await zipEntry.async('blob');
-        const imageFile = new File([blob], fileName.split('/').pop() || fileName, { 
-          type: `image/${ext === 'jpg' ? 'jpeg' : ext}` 
+        const imageFile = new File([blob], fileName.split('/').pop() || fileName, {
+          type: `image/${ext === 'jpg' ? 'jpeg' : ext}`
         });
         imageFiles.push(imageFile);
       }
-      
+
       setUploadedPages(prev => [...prev, ...imageFiles]);
       setUploadProgress('');
       toast({ title: 'ZIP extraído', description: `${imageFiles.length} imagens encontradas` });
@@ -450,7 +533,7 @@ const Admin = () => {
       toast({ title: 'Erro', description: 'Falha ao extrair ZIP', variant: 'destructive' });
       setUploadProgress('');
     }
-    
+
     if (zipInputRef.current) zipInputRef.current.value = '';
   };
 
@@ -482,7 +565,7 @@ const Admin = () => {
   const handleUpdateManga = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingManga) return;
-    
+
     setIsSubmitting(true);
     const { error } = await supabase.from('mangas').update({
       title: form.title,
@@ -500,7 +583,7 @@ const Admin = () => {
       is_weekly_highlight: form.is_weekly_highlight,
       is_home_highlight: form.is_home_highlight,
     }).eq('id', editingManga.id);
-    
+
     setIsSubmitting(false);
     if (error) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
@@ -515,7 +598,7 @@ const Admin = () => {
 
   const handleDeleteManga = async (id: string, title: string) => {
     if (!confirm(`Tem certeza que deseja excluir "${title}"? Esta ação não pode ser desfeita.`)) return;
-    
+
     const { error } = await supabase.from('mangas').delete().eq('id', id);
     if (error) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
@@ -543,7 +626,7 @@ const Admin = () => {
 
   const handleDeleteChapter = async (chapterId: string, chapterNumber: number) => {
     if (!confirm(`Excluir capítulo ${chapterNumber}?`)) return;
-    
+
     const { error } = await supabase.from('chapters').delete().eq('id', chapterId);
     if (error) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
@@ -552,6 +635,569 @@ const Admin = () => {
       setSelectedMangaChapters(prev => prev.filter(c => c.id !== chapterId));
       fetchStats();
     }
+  };
+
+  // ==================== PlumaComics Scraper Functions ====================
+
+  // Helper: fetch with retry for scrape.do API
+  const fetchWithRetry = async (url: string, retries = 2): Promise<Response> => {
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const response = await fetch(url);
+        if (response.ok) return response;
+        if (response.status === 502 || response.status === 503) {
+          if (i < retries) {
+            setScrapeStatus(`Erro temporário, tentando novamente (${i + 1}/${retries})...`);
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
+          }
+        }
+        throw new Error(`HTTP ${response.status}`);
+      } catch (e) {
+        if (i === retries) throw e;
+        setScrapeStatus(`Reconectando (${i + 1}/${retries})...`);
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+    throw new Error('Max retries reached');
+  };
+
+  // Fetch manga list from PlumaComics hotslid
+  const fetchPlumaMangas = async () => {
+    setIsScraping(true);
+    setScrapeStatus('Carregando lista de mangás do PlumaComics...');
+    setPlumaMangas([]);
+
+    try {
+      const targetUrl = 'https://plumacomics.cloud/';
+      const apiUrl = PROXY_APIS[selectedProxy].buildUrl(targetUrl, true);
+
+      const response = await fetchWithRetry(apiUrl);
+      const html = await response.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      // Find all manga cards in the hotslid section
+      const mangaCards = doc.querySelectorAll('.hotslid .bs .bsx a');
+      const mangaList: PlumaManga[] = [];
+
+      mangaCards.forEach((card) => {
+        const title = card.getAttribute('title') || '';
+        const url = card.getAttribute('href') || '';
+        const img = card.querySelector('img');
+        const cover = img?.getAttribute('src') || img?.getAttribute('data-src') || '';
+
+        // Extract slug from URL
+        const slugMatch = url.match(/\/manga\/([^\/]+)\/?$/);
+        const slug = slugMatch ? slugMatch[1] : '';
+
+        if (title && slug) {
+          mangaList.push({
+            title,
+            slug,
+            cover,
+            url,
+            selected: false
+          });
+        }
+      });
+
+      setPlumaMangas(mangaList);
+      setScrapeStatus(`${mangaList.length} mangás encontrados`);
+      toast({ title: 'Sucesso!', description: `${mangaList.length} mangás encontrados` });
+
+      if (mangaList.length > 0) {
+        setScrapeStep('mangas');
+      }
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+      setScrapeStatus('Erro ao carregar mangás - tente novamente');
+    }
+
+    setIsScraping(false);
+  };
+
+  // Fetch chapters for selected manga
+  const fetchPlumaChapters = async (manga: PlumaManga) => {
+    setIsScraping(true);
+    setSelectedPlumaManga(manga);
+    setScrapeStatus(`Carregando capítulos de ${manga.title}...`);
+    setPlumaChapters([]);
+
+    try {
+      const apiUrl = PROXY_APIS[selectedProxy].buildUrl(manga.url, true);
+
+      const response = await fetchWithRetry(apiUrl);
+
+      const html = await response.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      // Find all chapter boxes
+      const chapterBoxes = doc.querySelectorAll('.chbox .eph-num a');
+      const chapterList: PlumaChapter[] = [];
+
+      chapterBoxes.forEach((chapterEl) => {
+        const url = chapterEl.getAttribute('href') || '';
+        const numEl = chapterEl.querySelector('.chapternum');
+        const dateEl = chapterEl.querySelector('.chapterdate');
+
+        const chapterText = numEl?.textContent?.trim() || '';
+        const date = dateEl?.textContent?.trim() || '';
+
+        // Extract chapter number from text like "Capítulo 16"
+        const numMatch = chapterText.match(/(\d+)/);
+        const number = numMatch ? parseInt(numMatch[1]) : 0;
+
+        if (number > 0) {
+          chapterList.push({
+            number,
+            title: chapterText,
+            url,
+            date,
+            selected: false
+          });
+        }
+      });
+
+      // Sort chapters by number (descending - newest first)
+      chapterList.sort((a, b) => b.number - a.number);
+
+      setPlumaChapters(chapterList);
+      setScrapeStatus(`${chapterList.length} capítulos encontrados`);
+      toast({ title: 'Sucesso!', description: `${chapterList.length} capítulos encontrados` });
+
+      if (chapterList.length > 0) {
+        setScrapeStep('chapters');
+      }
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+      setScrapeStatus('Erro ao carregar capítulos');
+    }
+
+    setIsScraping(false);
+  };
+
+  // Toggle chapter selection
+  const toggleChapterSelection = (chapterNumber: number) => {
+    setPlumaChapters(prev => prev.map(ch =>
+      ch.number === chapterNumber ? { ...ch, selected: !ch.selected } : ch
+    ));
+  };
+
+  // Select/deselect all chapters
+  const toggleAllChapters = () => {
+    const allSelected = plumaChapters.every(ch => ch.selected);
+    setPlumaChapters(prev => prev.map(ch => ({ ...ch, selected: !allSelected })));
+  };
+
+  // Scrape pages from selected chapters
+  const scrapeSelectedChapters = async () => {
+    const selectedChaps = plumaChapters.filter(ch => ch.selected);
+    if (selectedChaps.length === 0) {
+      toast({ title: 'Erro', description: 'Selecione pelo menos um capítulo', variant: 'destructive' });
+      return;
+    }
+
+    if (!selectedPlumaManga) return;
+
+    setIsScraping(true);
+    setScrapedChapters([]);
+    setScrapeStep('pages');
+
+    const results: ScrapedChapterData[] = [];
+
+    for (let i = 0; i < selectedChaps.length; i++) {
+      const chapter = selectedChaps[i];
+      setScrapeStatus(`Extraindo capítulo ${chapter.number} (${i + 1}/${selectedChaps.length})...`);
+
+      try {
+        // Use the URL directly from the scraped chapter data
+        const chapterUrl = chapter.url;
+        const apiUrl = PROXY_APIS[selectedProxy].buildUrl(chapterUrl, true);
+
+        // Keep trying until successful
+        let html = '';
+        let attempt = 0;
+        while (true) {
+          attempt++;
+          setScrapeStatus(`Capítulo ${chapter.number} - tentativa ${attempt}...`);
+
+          try {
+            const response = await fetch(apiUrl);
+            if (response.ok) {
+              html = await response.text();
+              break; // Success!
+            }
+            console.log(`Attempt ${attempt} failed with ${response.status}, retrying...`);
+          } catch (e) {
+            console.log(`Attempt ${attempt} failed with error, retrying...`);
+          }
+
+          // Wait 3 seconds before retry
+          await new Promise(r => setTimeout(r, 3000));
+        }
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        // Find all page images - different selector based on source
+        const pageSelector = scrapeSource === 'nexustoons' ? 'img.manga-page-image' : 'img.ts-main-image';
+        const pageImages = doc.querySelectorAll(pageSelector);
+        const pages: PlumaPage[] = [];
+
+        pageImages.forEach((img, idx) => {
+          const src = img.getAttribute('src') || img.getAttribute('data-src') || '';
+          if (src && !src.includes('placeholder')) {
+            pages.push({
+              index: idx,
+              url: src
+            });
+          }
+        });
+
+        // Sort pages by index
+        pages.sort((a, b) => a.index - b.index);
+
+        if (pages.length > 0) {
+          results.push({
+            chapterNumber: chapter.number,
+            pages,
+            mangaTitle: selectedPlumaManga.title,
+            mangaSlug: selectedPlumaManga.slug
+          });
+        }
+
+        // Update UI progressively
+        setScrapedChapters([...results]);
+
+      } catch (error: any) {
+        toast({
+          title: `Erro no capítulo ${chapter.number}`,
+          description: error.message,
+          variant: 'destructive'
+        });
+      }
+
+      // Small delay between requests
+      if (i < selectedChaps.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    setIsScraping(false);
+    setScrapeStatus(`${results.length} capítulo(s) extraído(s)`);
+
+    if (results.length > 0) {
+      setScrapeStep('publish');
+      toast({ title: 'Concluído!', description: `${results.length} capítulo(s) prontos para publicar` });
+    }
+  };
+
+  // Publish a chapter to the site
+  const publishChapter = async (chapterData: ScrapedChapterData) => {
+    if (!selectedPlumaManga) return;
+
+    setPublishingChapter(chapterData.chapterNumber);
+
+    try {
+      // First, find or create the manga in our database
+      let { data: existingManga } = await supabase
+        .from('mangas')
+        .select('id')
+        .eq('slug', selectedPlumaManga.slug)
+        .single();
+
+      let mangaId = existingManga?.id;
+
+      // If manga doesn't exist, scrape full details and create it
+      if (!mangaId) {
+        setScrapeStatus('Extraindo dados da obra...');
+
+        // Fetch manga page to get full details
+        let synopsis = '';
+        let author = '';
+        let artist = '';
+        let mangaType: 'manga' | 'manhwa' | 'manhua' | 'novel' | 'webtoon' = 'manhua';
+        let genres: string[] = [];
+
+        try {
+          const apiUrl = PROXY_APIS[selectedProxy].buildUrl(selectedPlumaManga.url, true);
+          const response = await fetch(apiUrl);
+
+          if (response.ok) {
+            const html = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            // Extract synopsis
+            const synopsisEl = doc.querySelector('.entry-content[itemprop="description"]') ||
+              doc.querySelector('.synp p') ||
+              doc.querySelector('.summary__content p') ||
+              doc.querySelector('.desc p');
+            if (synopsisEl) {
+              synopsis = synopsisEl.textContent?.trim() || '';
+            }
+
+            // Extract author/artist from info table
+            const infoItems = doc.querySelectorAll('.infox .flex-wrap span, .tsinfo .imptdt');
+            infoItems.forEach(item => {
+              const text = item.textContent?.toLowerCase() || '';
+              const value = item.querySelector('a, i')?.textContent?.trim() ||
+                item.textContent?.replace(/autor|artista|artist|author|tipo|type/gi, '').trim() || '';
+
+              if (text.includes('autor') || text.includes('author')) {
+                author = value;
+              }
+              if (text.includes('artista') || text.includes('artist')) {
+                artist = value;
+              }
+              if (text.includes('tipo') || text.includes('type')) {
+                const typeText = value.toLowerCase();
+                if (typeText.includes('manhua')) mangaType = 'manhua';
+                else if (typeText.includes('manhwa')) mangaType = 'manhwa';
+                else if (typeText.includes('manga')) mangaType = 'manga';
+              }
+            });
+
+            // Extract genres
+            const genreEls = doc.querySelectorAll('.mgen a, .genres-content a, .genre-item a');
+            genreEls.forEach(el => {
+              const genre = el.textContent?.trim();
+              if (genre && !genres.includes(genre)) {
+                genres.push(genre);
+              }
+            });
+          }
+        } catch (e) {
+          console.log('Failed to fetch manga details, using defaults');
+        }
+
+        const { data: newManga, error: mangaError } = await supabase
+          .from('mangas')
+          .insert({
+            title: selectedPlumaManga.title,
+            slug: selectedPlumaManga.slug,
+            cover_url: selectedPlumaManga.cover,
+            type: mangaType,
+            status: 'ongoing',
+            synopsis: synopsis || `Importado de PlumaComics`,
+            author: author || undefined,
+            artist: artist || undefined,
+            genres: genres.length > 0 ? genres : undefined
+          })
+          .select('id')
+          .single();
+
+        if (mangaError) throw mangaError;
+        mangaId = newManga.id;
+        fetchMangas(); // Refresh manga list
+        toast({ title: 'Obra criada!', description: selectedPlumaManga.title });
+      }
+
+      // Download and upload each page image to our storage
+      setScrapeStatus(`Fazendo upload das páginas do capítulo ${chapterData.chapterNumber}...`);
+      const uploadedUrls: string[] = [];
+
+      for (let i = 0; i < chapterData.pages.length; i++) {
+        const page = chapterData.pages[i];
+        setScrapeStatus(`Página ${i + 1}/${chapterData.pages.length}...`);
+
+        try {
+          // Fetch image through proxy to avoid CORS
+          const proxyUrl = PROXY_APIS[selectedProxy].buildUrl(page.url, false);
+          const imgResponse = await fetch(proxyUrl);
+          if (!imgResponse.ok) throw new Error('Failed to fetch page');
+
+          const blob = await imgResponse.blob();
+          const ext = page.url.split('.').pop()?.split('?')[0] || 'jpg';
+          const fileName = `page-${String(i + 1).padStart(3, '0')}.${ext}`;
+
+          // Upload directly to Supabase Storage
+          const path = `chapters/${chapterData.mangaSlug}/cap-${chapterData.chapterNumber}/${fileName}`;
+          const { data, error } = await supabase.storage
+            .from('manga-content')
+            .upload(path, blob, {
+              contentType: blob.type || 'image/jpeg',
+              upsert: true
+            });
+
+          if (error) throw error;
+
+          const { data: urlData } = supabase.storage
+            .from('manga-content')
+            .getPublicUrl(path);
+
+          uploadedUrls.push(urlData.publicUrl);
+        } catch (e: any) {
+          console.error(`Failed to upload page ${i + 1}:`, e);
+          // Fallback to original URL if upload fails
+          uploadedUrls.push(page.url);
+        }
+      }
+
+      const { error: chapterError } = await supabase
+        .from('chapters')
+        .insert({
+          manga_id: mangaId,
+          number: chapterData.chapterNumber,
+          pages: uploadedUrls
+        });
+
+      if (chapterError) throw chapterError;
+
+      toast({
+        title: 'Publicado!',
+        description: `Capítulo ${chapterData.chapterNumber} publicado com sucesso`
+      });
+
+      // Remove from scraped list
+      setScrapedChapters(prev => prev.filter(ch => ch.chapterNumber !== chapterData.chapterNumber));
+      fetchStats();
+
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao publicar',
+        description: error.message,
+        variant: 'destructive'
+      });
+    }
+
+    setPublishingChapter(null);
+  };
+
+  // Reset scraper state
+  const resetScraper = () => {
+    setScrapeStep('source');
+    setPlumaMangas([]);
+    setSelectedPlumaManga(null);
+    setPlumaChapters([]);
+    setScrapedChapters([]);
+    setScrapeStatus('');
+  };
+
+  // ==================== NexusToons Scraper Functions ====================
+
+  // Fetch manga list from NexusToons trending carousel
+  const fetchNexusMangas = async () => {
+    setIsScraping(true);
+    setScrapeStatus('Carregando lista de mangás do NexusToons...');
+    setPlumaMangas([]);
+
+    try {
+      const targetUrl = 'https://nexustoons.site/';
+      // NexusToons uses SSR, so we don't need render=true (much faster!)
+      const apiUrl = PROXY_APIS[selectedProxy].buildUrl(targetUrl, false);
+
+      const response = await fetchWithRetry(apiUrl);
+      const html = await response.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      // Find all manga cards in the trending carousel
+      const mangaCards = doc.querySelectorAll('.embla__slide a.content-card');
+      const mangaList: PlumaManga[] = [];
+
+      mangaCards.forEach((card) => {
+        const titleEl = card.querySelector('h3');
+        const title = titleEl?.textContent?.trim() || '';
+        const url = card.getAttribute('href') || '';
+        // Try multiple selectors and attributes for the cover image
+        const img = card.querySelector('img.content-cover') || card.querySelector('img');
+        const cover = img?.getAttribute('src') || img?.getAttribute('data-src') || img?.getAttribute('data-lazy-src') || '';
+
+        // Extract slug from URL (e.g., /manga/slug-name/)
+        const slugMatch = url.match(/\/manga\/([^\/]+)\/?/);
+        const slug = slugMatch ? slugMatch[1] : '';
+
+        // Build full URL if relative
+        const fullUrl = url.startsWith('http') ? url : `https://nexustoons.site${url}`;
+
+        if (title && slug) {
+          mangaList.push({
+            title,
+            slug,
+            cover,
+            url: fullUrl,
+            selected: false
+          });
+        }
+      });
+
+      setPlumaMangas(mangaList);
+      setScrapeStatus(`${mangaList.length} mangás encontrados`);
+      toast({ title: 'Sucesso!', description: `${mangaList.length} mangás encontrados` });
+
+      if (mangaList.length > 0) {
+        setScrapeStep('mangas');
+      }
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+      setScrapeStatus('Erro ao carregar mangás - tente novamente');
+    }
+
+    setIsScraping(false);
+  };
+
+  // Fetch chapters for selected manga from NexusToons
+  const fetchNexusChapters = async (manga: PlumaManga) => {
+    setIsScraping(true);
+    setSelectedPlumaManga(manga);
+    setScrapeStatus(`Carregando capítulos de ${manga.title}...`);
+    setPlumaChapters([]);
+
+    try {
+      // NexusToons uses SSR, so we don't need render=true (much faster!)
+      const apiUrl = PROXY_APIS[selectedProxy].buildUrl(manga.url, false);
+
+      const response = await fetchWithRetry(apiUrl);
+      const html = await response.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      // Find all chapter items
+      const chapterItems = doc.querySelectorAll('a.chapter-item');
+      const chapterList: PlumaChapter[] = [];
+
+      chapterItems.forEach((chapterEl) => {
+        const url = chapterEl.getAttribute('href') || '';
+        const chapterNumber = chapterEl.getAttribute('data-chapter-number');
+        const number = chapterNumber ? parseInt(chapterNumber) : 0;
+
+        // Get date from the chapter-date element
+        const dateEl = chapterEl.querySelector('.chapter-date');
+        const date = dateEl?.textContent?.trim() || '';
+
+        // Build full URL if relative
+        const fullUrl = url.startsWith('http') ? url : `https://nexustoons.site${url}`;
+
+        if (number > 0) {
+          chapterList.push({
+            number,
+            title: `Capítulo ${number}`,
+            url: fullUrl,
+            date,
+            selected: false
+          });
+        }
+      });
+
+      // Sort chapters by number (descending - newest first)
+      chapterList.sort((a, b) => b.number - a.number);
+
+      setPlumaChapters(chapterList);
+      setScrapeStatus(`${chapterList.length} capítulos encontrados`);
+      toast({ title: 'Sucesso!', description: `${chapterList.length} capítulos encontrados` });
+
+      if (chapterList.length > 0) {
+        setScrapeStep('chapters');
+      }
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+      setScrapeStatus('Erro ao carregar capítulos');
+    }
+
+    setIsScraping(false);
   };
 
   if (loading) {
@@ -565,7 +1211,7 @@ const Admin = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-display font-bold mb-2">Painel Administrativo</h1>
@@ -639,6 +1285,9 @@ const Admin = () => {
                 </Button>
                 <Button variant="outline" className="gap-2" onClick={() => navigate('/catalogo')}>
                   <BookOpen className="h-4 w-4" /> Ver Catálogo
+                </Button>
+                <Button variant="outline" className="gap-2" onClick={() => setIsScrapeModalOpen(true)}>
+                  <Globe className="h-4 w-4" /> Scrape
                 </Button>
               </div>
             </section>
@@ -962,7 +1611,7 @@ const Admin = () => {
           <DialogHeader>
             <DialogTitle>Adicionar Nova Obra</DialogTitle>
           </DialogHeader>
-          
+
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <h3 className="font-medium mb-3">Informações Básicas</h3>
@@ -975,7 +1624,7 @@ const Admin = () => {
                     onChange={(e) => setForm({ ...form, title: e.target.value })}
                   />
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Tipo *</Label>
@@ -1003,7 +1652,7 @@ const Admin = () => {
                     </Select>
                   </div>
                 </div>
-                
+
                 <div>
                   <Label>Sinopse</Label>
                   <Textarea
@@ -1200,7 +1849,7 @@ const Admin = () => {
           <DialogHeader>
             <DialogTitle>Criar Códigos VIP</DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div>
               <Label>Tier</Label>
@@ -1257,7 +1906,7 @@ const Admin = () => {
           <DialogHeader>
             <DialogTitle>Adicionar Novo Capítulo</DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div>
               <Label>Selecionar Obra *</Label>
@@ -1345,7 +1994,7 @@ const Admin = () => {
                   Upload de Arquivos
                 </Button>
               </div>
-              
+
               {uploadMode === 'url' ? (
                 <>
                   <p className="text-xs text-muted-foreground mb-2">Uma URL por linha</p>
@@ -1373,7 +2022,7 @@ const Admin = () => {
                     className="hidden"
                     onChange={handleZipUpload}
                   />
-                  
+
                   <div className="flex gap-2">
                     <Button
                       type="button"
@@ -1394,11 +2043,11 @@ const Admin = () => {
                       Enviar ZIP
                     </Button>
                   </div>
-                  
+
                   {uploadProgress && (
                     <p className="text-sm text-muted-foreground">{uploadProgress}</p>
                   )}
-                  
+
                   {uploadedPages.length > 0 && (
                     <div className="border border-border rounded-lg p-3 max-h-48 overflow-y-auto">
                       <p className="text-sm font-medium mb-2">{uploadedPages.length} página(s) selecionada(s)</p>
@@ -1448,7 +2097,7 @@ const Admin = () => {
           <DialogHeader>
             <DialogTitle>Editar Obra</DialogTitle>
           </DialogHeader>
-          
+
           <form onSubmit={handleUpdateManga} className="space-y-6">
             <div>
               <h3 className="font-medium mb-3">Informações Básicas</h3>
@@ -1461,7 +2110,7 @@ const Admin = () => {
                     onChange={(e) => setForm({ ...form, title: e.target.value })}
                   />
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Tipo *</Label>
@@ -1489,7 +2138,7 @@ const Admin = () => {
                     </Select>
                   </div>
                 </div>
-                
+
                 <div>
                   <Label>Sinopse</Label>
                   <Textarea
@@ -1654,7 +2303,7 @@ const Admin = () => {
           <DialogHeader>
             <DialogTitle>Adicionar Administrador</DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div>
               <Label>Email do Usuário</Label>
@@ -1676,31 +2325,31 @@ const Admin = () => {
               }}>
                 Cancelar
               </Button>
-              <Button 
+              <Button
                 disabled={isAddingAdmin || !adminEmail}
                 onClick={async () => {
                   if (!adminEmail) return;
-                  
+
                   setIsAddingAdmin(true);
-                  
+
                   // First find the user by email in profiles (we need to query auth.users but we can't directly)
                   // We'll use an edge function for this
                   const { data, error } = await supabase.functions.invoke('add-admin', {
                     body: { email: adminEmail }
                   });
-                  
+
                   setIsAddingAdmin(false);
-                  
+
                   if (error || data?.error) {
-                    toast({ 
-                      title: 'Erro', 
-                      description: data?.error || error?.message || 'Erro ao adicionar admin', 
-                      variant: 'destructive' 
+                    toast({
+                      title: 'Erro',
+                      description: data?.error || error?.message || 'Erro ao adicionar admin',
+                      variant: 'destructive'
                     });
                   } else {
-                    toast({ 
-                      title: 'Sucesso!', 
-                      description: `${adminEmail} agora é administrador` 
+                    toast({
+                      title: 'Sucesso!',
+                      description: `${adminEmail} agora é administrador`
                     });
                     setIsAddAdminModalOpen(false);
                     setAdminEmail('');
@@ -1710,6 +2359,277 @@ const Admin = () => {
                 {isAddingAdmin ? 'Adicionando...' : 'Adicionar Admin'}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* PlumaComics Scrape Modal */}
+      <Dialog open={isScrapeModalOpen} onOpenChange={(open) => {
+        setIsScrapeModalOpen(open);
+        if (!open) {
+          resetScraper();
+        }
+      }}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5" /> Scraper de Mangás
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Importe mangás do PlumaComics.cloud para o seu catálogo
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            {/* Source and Proxy Selection */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex-1 min-w-[200px] max-w-[250px]">
+                <Label>Fonte</Label>
+                <Select value={scrapeSource} onValueChange={(v: 'plumacomics' | 'nexustoons' | 'coming_soon') => setScrapeSource(v)} disabled={isScraping}>
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="Selecione a fonte" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="plumacomics">PlumaComics.Cloud</SelectItem>
+                    <SelectItem value="nexustoons">NexusToons.Site</SelectItem>
+                    <SelectItem value="coming_soon" disabled>Em breve...</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex-1 min-w-[200px] max-w-[250px]">
+                <Label>Proxy API</Label>
+                <Select value={selectedProxy} onValueChange={(v: ProxyType) => setSelectedProxy(v)} disabled={isScraping}>
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="Selecione o proxy" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(PROXY_APIS).map(([key, api]) => (
+                      <SelectItem key={key} value={key}>{api.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {scrapeStep === 'source' && (scrapeSource === 'plumacomics' || scrapeSource === 'nexustoons') && (
+                <Button
+                  onClick={scrapeSource === 'nexustoons' ? fetchNexusMangas : fetchPlumaMangas}
+                  disabled={isScraping}
+                  className="mt-6 gap-2"
+                >
+                  {isScraping ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Carregando...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="h-4 w-4" />
+                      Buscar Mangás
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {scrapeStep !== 'source' && (
+                <Button variant="outline" onClick={resetScraper} className="mt-6 gap-2">
+                  <X className="h-4 w-4" />
+                  Recomeçar
+                </Button>
+              )}
+            </div>
+
+            {/* Status */}
+            {scrapeStatus && (
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                {isScraping && <Loader2 className="h-4 w-4 animate-spin" />}
+                {scrapeStatus}
+              </div>
+            )}
+
+            {/* Step: Manga List */}
+            {scrapeStep === 'mangas' && plumaMangas.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="font-medium text-lg">Mangás Disponíveis ({plumaMangas.length})</h3>
+                <p className="text-sm text-muted-foreground">Clique em um mangá para ver os capítulos</p>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {plumaMangas.map((manga, index) => (
+                    <div
+                      key={index}
+                      className="rounded-xl border border-border bg-card p-3 cursor-pointer hover:border-primary/50 transition-all"
+                      onClick={() => scrapeSource === 'nexustoons' ? fetchNexusChapters(manga) : fetchPlumaChapters(manga)}
+                    >
+                      <div className="aspect-[3/4] rounded-lg overflow-hidden bg-secondary mb-2">
+                        {manga.cover && (
+                          <img
+                            src={manga.cover}
+                            alt={manga.title}
+                            className="w-full h-full object-cover"
+                          />
+                        )}
+                      </div>
+                      <p className="font-medium text-sm line-clamp-2">{manga.title}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Step: Chapter Selection */}
+            {scrapeStep === 'chapters' && selectedPlumaManga && plumaChapters.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-20 rounded-lg overflow-hidden bg-secondary flex-shrink-0">
+                    {selectedPlumaManga.cover && (
+                      <img src={selectedPlumaManga.cover} alt="" className="w-full h-full object-cover" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-lg">{selectedPlumaManga.title}</h3>
+                    <p className="text-sm text-muted-foreground">{plumaChapters.length} capítulos disponíveis</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={toggleAllChapters}>
+                    {plumaChapters.every(ch => ch.selected) ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    {plumaChapters.filter(ch => ch.selected).length} selecionados
+                  </span>
+                </div>
+
+                <div className="max-h-[300px] overflow-y-auto rounded-lg border border-border">
+                  {plumaChapters.map((chapter) => (
+                    <div
+                      key={chapter.number}
+                      className={`flex items-center gap-3 p-3 border-b border-border last:border-0 cursor-pointer hover:bg-secondary/50 ${chapter.selected ? 'bg-primary/5' : ''}`}
+                      onClick={() => toggleChapterSelection(chapter.number)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={chapter.selected}
+                        onChange={() => { }}
+                        className="h-4 w-4"
+                      />
+                      <span className="font-medium">{chapter.title}</span>
+                      <span className="text-sm text-muted-foreground ml-auto">{chapter.date}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <Button
+                  onClick={scrapeSelectedChapters}
+                  disabled={isScraping || plumaChapters.filter(ch => ch.selected).length === 0}
+                  className="gap-2"
+                >
+                  {isScraping ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Extraindo...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="h-4 w-4" />
+                      Extrair Páginas ({plumaChapters.filter(ch => ch.selected).length} caps)
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {/* Step: Scraped Pages / Publish */}
+            {(scrapeStep === 'pages' || scrapeStep === 'publish') && selectedPlumaManga && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-20 rounded-lg overflow-hidden bg-secondary flex-shrink-0">
+                    {selectedPlumaManga.cover && (
+                      <img src={selectedPlumaManga.cover} alt="" className="w-full h-full object-cover" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-lg">{selectedPlumaManga.title}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {scrapedChapters.length} capítulo(s) extraído(s)
+                    </p>
+                  </div>
+                </div>
+
+                {scrapedChapters.length === 0 && isScraping && (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  {scrapedChapters.map((chapter) => (
+                    <div
+                      key={chapter.chapterNumber}
+                      className="rounded-xl border border-border bg-card p-4"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="font-medium">Capítulo {chapter.chapterNumber}</p>
+                          <p className="text-sm text-muted-foreground">{chapter.pages.length} páginas</p>
+                        </div>
+                        <Button
+                          onClick={() => publishChapter(chapter)}
+                          disabled={publishingChapter === chapter.chapterNumber}
+                          className="gap-2"
+                        >
+                          {publishingChapter === chapter.chapterNumber ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Publicando...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="h-4 w-4" />
+                              Publicar
+                            </>
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Preview of pages */}
+                      <div className="flex gap-2 overflow-x-auto pb-2">
+                        {chapter.pages.slice(0, 5).map((page, idx) => (
+                          <div key={idx} className="w-16 h-24 flex-shrink-0 rounded overflow-hidden bg-secondary">
+                            <img src={page.url} alt={`Página ${page.index + 1}`} className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                        {chapter.pages.length > 5 && (
+                          <div className="w-16 h-24 flex-shrink-0 rounded bg-secondary flex items-center justify-center text-sm text-muted-foreground">
+                            +{chapter.pages.length - 5}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {scrapedChapters.length > 0 && (
+                  <div className="flex justify-end pt-4 border-t border-border">
+                    <Button
+                      onClick={async () => {
+                        // Copy array to avoid mutation issues during iteration
+                        const chaptersToPublish = [...scrapedChapters];
+                        for (const ch of chaptersToPublish) {
+                          await publishChapter(ch);
+                        }
+                      }}
+                      disabled={publishingChapter !== null}
+                      variant="default"
+                      className="gap-2"
+                    >
+                      <Upload className="h-4 w-4" />
+                      Publicar Todos ({scrapedChapters.length})
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
