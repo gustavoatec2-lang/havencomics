@@ -788,18 +788,37 @@ const Admin = () => {
     const files = e.target.files;
     if (!files) return;
 
-    // Group files by their parent folder
+    // Group files by their parent folder (subfolder of selected folder)
     const folderMap = new Map<string, File[]>();
 
     Array.from(files).forEach(file => {
       if (!file.type.startsWith('image/')) return;
 
-      // webkitRelativePath gives us the folder structure
+      // webkitRelativePath gives us the folder structure like "ParentFolder/Chapter01/page.jpg"
       const relativePath = (file as any).webkitRelativePath || file.name;
       const parts = relativePath.split('/');
 
-      // Get the first folder in the path (immediate parent of selected folder)
-      const folderName = parts.length > 1 ? parts[0] : 'default';
+      // If path has at least 2 parts (folder/file), get the deepest folder before the file
+      // For "Parent/Chapter01/page.jpg" -> get "Chapter01"
+      // For "Parent/Chapter01/subfolder/page.jpg" -> get "Chapter01"
+      // For "Chapter01/page.jpg" -> get "Chapter01"
+      let folderName = 'default';
+
+      if (parts.length >= 2) {
+        // Try to find a folder with a chapter number in the path
+        for (let i = 0; i < parts.length - 1; i++) {
+          const folder = parts[i];
+          const match = folder.match(/(\d+\.?\d*)/);
+          if (match) {
+            folderName = folder;
+            break;
+          }
+        }
+        // If no folder with number found, use the immediate parent folder
+        if (folderName === 'default' && parts.length >= 2) {
+          folderName = parts[parts.length - 2];
+        }
+      }
 
       if (!folderMap.has(folderName)) {
         folderMap.set(folderName, []);
@@ -835,7 +854,7 @@ const Admin = () => {
     setMultiChapters(newChapters);
     toast({ title: 'Pastas organizadas!', description: `${newChapters.length} capítulos encontrados` });
 
-    if (batchFoldersRef.current) batchFoldersRef.current.value = '';
+    if (batchFoldersRef.current) batchFoldersRef.current.value = ''
   };
 
   const addMoreChapter = () => {
