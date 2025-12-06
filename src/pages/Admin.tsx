@@ -158,6 +158,7 @@ const Admin = () => {
   const [isAddAdminModalOpen, setIsAddAdminModalOpen] = useState(false);
   const [adminEmail, setAdminEmail] = useState('');
   const [isAddingAdmin, setIsAddingAdmin] = useState(false);
+  const [adminList, setAdminList] = useState<{ id: string; user_id: string; email: string }[]>([]);
   const [coverUploading, setCoverUploading] = useState(false);
   const [bannerUploading, setBannerUploading] = useState(false);
 
@@ -201,12 +202,61 @@ const Admin = () => {
       fetchMangas();
       fetchStats();
       fetchVipCodes();
+      fetchAdmins();
     }
   }, [isAdmin]);
 
   const fetchMangas = async () => {
     const { data } = await supabase.from('mangas').select('*').order('created_at', { ascending: false });
     if (data) setMangas(data);
+  };
+
+  const fetchAdmins = async () => {
+    // Get all admin roles from user_roles
+    const { data: roles } = await supabase
+      .from('user_roles')
+      .select('id, user_id')
+      .eq('role', 'admin');
+
+    if (!roles || roles.length === 0) {
+      setAdminList([]);
+      return;
+    }
+
+    // Get profiles for each admin to get their email
+    const userIds = roles.map(r => r.user_id);
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, username')
+      .in('id', userIds);
+
+    const admins = roles.map(role => {
+      const profile = profiles?.find(p => p.id === role.user_id);
+      return {
+        id: role.id,
+        user_id: role.user_id,
+        email: profile?.username || role.user_id.slice(0, 8) + '...'
+      };
+    });
+
+    setAdminList(admins);
+  };
+
+  const removeAdmin = async (roleId: string, userId: string) => {
+    if (userId === user?.id) {
+      toast({ title: 'Erro', description: 'Você não pode remover a si mesmo', variant: 'destructive' });
+      return;
+    }
+
+    if (!confirm('Tem certeza que deseja remover este administrador?')) return;
+
+    const { error } = await supabase.from('user_roles').delete().eq('id', roleId);
+    if (error) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Removido!', description: 'Administrador removido com sucesso' });
+      fetchAdmins();
+    }
   };
 
   const fetchVipCodes = async () => {
@@ -1754,10 +1804,51 @@ const Admin = () => {
                 Adicione novos administradores inserindo o email da conta do usuário.
               </p>
 
-              <div className="rounded-xl border border-border bg-card p-6">
-                <p className="text-sm text-muted-foreground">
-                  Clique em "Adicionar Admin" para promover um usuário existente a administrador.
-                </p>
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                {adminList.length === 0 ? (
+                  <div className="p-6 text-center text-muted-foreground text-sm">
+                    Nenhum administrador cadastrado ainda.
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead className="bg-secondary">
+                      <tr>
+                        <th className="text-left p-4 font-medium">Usuário</th>
+                        <th className="text-left p-4 font-medium">ID</th>
+                        <th className="text-right p-4 font-medium">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adminList.map((admin) => (
+                        <tr key={admin.id} className="border-t border-border">
+                          <td className="p-4">
+                            <div className="flex items-center gap-2">
+                              <Shield className="h-4 w-4 text-primary" />
+                              <span className="font-medium">{admin.email}</span>
+                              {admin.user_id === user?.id && (
+                                <Badge variant="secondary" className="text-xs">Você</Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-4 text-muted-foreground text-sm font-mono">
+                            {admin.user_id.slice(0, 8)}...
+                          </td>
+                          <td className="p-4 text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeAdmin(admin.id, admin.user_id)}
+                              disabled={admin.user_id === user?.id}
+                              title={admin.user_id === user?.id ? 'Você não pode remover a si mesmo' : 'Remover admin'}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </section>
           </TabsContent>
