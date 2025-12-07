@@ -6,7 +6,7 @@ import { Shield, AlertTriangle } from 'lucide-react';
  * Banner Ad component that loads the ad script
  * Displays at top and bottom of chapters
  * Hidden for VIP users (silver/gold)
- * Includes adblock detection
+ * Includes adblock detection - checks for rmp-vast in window
  */
 
 interface BannerAdProps {
@@ -39,24 +39,17 @@ const BannerAd = ({ onAdBlocked }: BannerAdProps) => {
       `;
             containerRef.current.appendChild(script);
 
-            // Check after 5 seconds if ad loaded
+            // Check after 5 seconds if rmp-vast loaded (indicates ads working)
             const checkTimer = setTimeout(() => {
-                if (containerRef.current) {
-                    const container = containerRef.current;
-                    // Check if any iframe or ad content was injected
-                    const hasAdContent = container.querySelector('iframe') ||
-                        container.querySelector('[id*="ad"]') ||
-                        container.querySelector('[class*="ad"]') ||
-                        container.children.length > 1;
+                const win = window as any;
+                // If rmp-vast exists in window, ads are loading correctly
+                const adLoaded = win.rmpVast || win['rmp-vast'] || win.RmpVast ||
+                    document.querySelector('[class*="rmp-vast"]') ||
+                    document.querySelector('[id*="rmp-vast"]');
 
-                    // Check if container has been modified by ad script
-                    const containerHeight = container.offsetHeight;
-
-                    // If no ad content and container is still small, ad was likely blocked
-                    if (!hasAdContent && containerHeight < 100) {
-                        setAdBlocked(true);
-                        onAdBlocked?.(true);
-                    }
+                if (!adLoaded) {
+                    setAdBlocked(true);
+                    onAdBlocked?.(true);
                 }
             }, 5000);
 
