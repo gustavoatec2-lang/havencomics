@@ -25,8 +25,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log('Auth state changed:', event);
         setSession(session);
         setUser(session?.user ?? null);
 
@@ -44,7 +46,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Get initial session and refresh if needed
+    const initSession = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      if (error) {
+        console.error('Error getting session:', error);
+        setLoading(false);
+        return;
+      }
+
+      // If we have a session, try to refresh it
+      if (session) {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) {
+          console.warn('Session refresh failed:', refreshError.message);
+        } else if (refreshData.session) {
+          setSession(refreshData.session);
+          setUser(refreshData.session.user);
+          checkAdminRole(refreshData.session.user.id);
+          checkVipStatus(refreshData.session.user.id);
+          setLoading(false);
+          return;
+        }
+      }
+
       setSession(session);
       setUser(session?.user ?? null);
 
@@ -53,7 +79,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         checkVipStatus(session.user.id);
       }
       setLoading(false);
-    });
+    };
+
+    initSession();
 
     return () => subscription.unsubscribe();
   }, []);

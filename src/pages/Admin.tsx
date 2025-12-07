@@ -798,23 +798,40 @@ const Admin = () => {
       const relativePath = (file as any).webkitRelativePath || file.name;
       const parts = relativePath.split('/');
 
-      // If path has at least 2 parts (folder/file), get the deepest folder before the file
-      // For "Parent/Chapter01/page.jpg" -> get "Chapter01"
-      // For "Parent/Chapter01/subfolder/page.jpg" -> get "Chapter01"
-      // For "Chapter01/page.jpg" -> get "Chapter01"
+      // If path has at least 2 parts (folder/file), get the folder containing chapter images
+      // For "MangaName/Chapter01/page.jpg" -> get "Chapter01"
+      // For "MangaName/Capitulo 10/page.jpg" -> get "Capitulo 10"
       let folderName = 'default';
 
       if (parts.length >= 2) {
-        // Try to find a folder with a chapter number in the path
-        for (let i = 0; i < parts.length - 1; i++) {
+        // Look for chapter folders from closest to file (reverse order to prioritize nearest folder)
+        // This avoids picking up numbers from manga names like "10.000 Anos"
+        for (let i = parts.length - 2; i >= 0; i--) {
           const folder = parts[i];
-          const match = folder.match(/(\d+\.?\d*)/);
-          if (match) {
+
+          // First, try to match chapter patterns like "Cap 1", "Capitulo 09", "Chapter 10"
+          const chapterPatternMatch = folder.match(/(?:cap[íi]tulo|capitulo|chapter|cap)[\s\-_]*(\d+\.?\d*)/i);
+          if (chapterPatternMatch) {
+            folderName = folder;
+            break;
+          }
+
+          // Then try folders that are ONLY numbers (like "01", "2", "10")
+          const onlyNumberMatch = folder.match(/^(\d+\.?\d*)$/);
+          if (onlyNumberMatch) {
+            folderName = folder;
+            break;
+          }
+
+          // Then try folders that START with a number (like "01 - Title", "10_something")
+          const startsWithNumberMatch = folder.match(/^(\d+)[\s\-_]/);
+          if (startsWithNumberMatch) {
             folderName = folder;
             break;
           }
         }
-        // If no folder with number found, use the immediate parent folder
+
+        // If still not found, use immediate parent folder
         if (folderName === 'default' && parts.length >= 2) {
           folderName = parts[parts.length - 2];
         }
