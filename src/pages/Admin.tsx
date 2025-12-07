@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import JSZip from 'jszip';
 import { uploadToR2 } from '@/lib/r2-upload';
+import AdminStatistics from '@/components/AdminStatistics';
 interface MangaForm {
   title: string;
   type: string;
@@ -1649,6 +1650,7 @@ const Admin = () => {
             <TabsTrigger value="destaque">Destaque</TabsTrigger>
             <TabsTrigger value="vip">Códigos VIP</TabsTrigger>
             <TabsTrigger value="admins">Admins</TabsTrigger>
+            <TabsTrigger value="estatisticas">📊 Estatísticas</TabsTrigger>
           </TabsList>
 
           <TabsContent value="mangas">
@@ -2023,6 +2025,13 @@ const Admin = () => {
                   </table>
                 )}
               </div>
+            </section>
+          </TabsContent>
+
+          <TabsContent value="estatisticas">
+            <section>
+              <h2 className="text-xl font-display font-bold mb-4">Estatísticas Detalhadas</h2>
+              <AdminStatistics />
             </section>
           </TabsContent>
         </Tabs>

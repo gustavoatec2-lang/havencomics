@@ -12,7 +12,6 @@ interface ProfileData {
   username: string | null;
   vip_tier: string;
   vip_expires_at: string | null;
-  total_reading_time: number;
 }
 
 interface ReadingHistoryItem {
@@ -68,10 +67,10 @@ const Profile = () => {
   const fetchProfile = async () => {
     const { data } = await supabase
       .from('profiles')
-      .select('username, vip_tier, vip_expires_at, total_reading_time')
+      .select('username, vip_tier, vip_expires_at')
       .eq('id', user!.id)
       .single();
-    
+
     if (data) setProfile(data);
   };
 
@@ -80,7 +79,7 @@ const Profile = () => {
       .from('user_roles')
       .select('role')
       .eq('user_id', user!.id);
-    
+
     if (data) setUserRoles(data.map((r: UserRole) => r.role));
   };
 
@@ -91,7 +90,7 @@ const Profile = () => {
       .eq('user_id', user!.id)
       .order('last_read_at', { ascending: false })
       .limit(20);
-    
+
     if (data) setReadingHistory(data as any);
   };
 
@@ -101,7 +100,7 @@ const Profile = () => {
       .select('manga_id, created_at, mangas(title, cover_url, type)')
       .eq('user_id', user!.id)
       .order('created_at', { ascending: false });
-    
+
     if (data) setFavorites(data as any);
   };
 
@@ -153,7 +152,7 @@ const Profile = () => {
             <div className="w-24 h-24 rounded-full bg-secondary flex items-center justify-center">
               <User className="h-12 w-12 text-muted-foreground" />
             </div>
-            
+
             <div className="flex-1 text-center md:text-left">
               <h1 className="text-2xl font-bold mb-1">
                 {profile?.username || 'Usuário'}
@@ -179,7 +178,7 @@ const Profile = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="rounded-xl border border-border bg-card p-4 text-center">
             <Clock className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
-            <p className="text-2xl font-bold">{formatReadingTime(profile?.total_reading_time || 0)}</p>
+            <p className="text-2xl font-bold">{formatReadingTime(readingHistory.reduce((sum, item) => sum + (item.reading_time_seconds || 0), 0))}</p>
             <p className="text-xs text-muted-foreground">Tempo de Leitura</p>
           </div>
           <div className="rounded-xl border border-border bg-card p-4 text-center">
@@ -195,8 +194,8 @@ const Profile = () => {
           <div className="rounded-xl border border-border bg-card p-4 text-center">
             <TrendingUp className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
             <p className="text-2xl font-bold">
-              {!profile?.vip_tier || profile.vip_tier === 'free' 
-                ? 'Free' 
+              {!profile?.vip_tier || profile.vip_tier === 'free'
+                ? 'Free'
                 : profile.vip_tier.charAt(0).toUpperCase() + profile.vip_tier.slice(1)}
             </p>
             <p className="text-xs text-muted-foreground">Plano Atual</p>
@@ -285,8 +284,8 @@ const Profile = () => {
             ) : (
               <div className="divide-y divide-border">
                 {favorites.map((item) => (
-                  <Link 
-                    key={item.manga_id} 
+                  <Link
+                    key={item.manga_id}
                     to={`/manga/${item.manga_id}`}
                     className="flex items-center gap-4 p-4 hover:bg-secondary transition-colors"
                   >
