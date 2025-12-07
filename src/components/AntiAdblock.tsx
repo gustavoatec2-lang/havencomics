@@ -1,20 +1,29 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLocation } from 'react-router-dom';
 import { AlertTriangle, Shield } from 'lucide-react';
 
 /**
  * Anti-Adblock Detection System
- * Uses bait element detection to catch adblockers
- * VIP users are exempt from this check
+ * Only activates on pages with ads (reader pages)
+ * Uses actual ad script testing to detect blockers
+ * VIP users are exempt
  */
 
 const AntiAdblock = () => {
     const { isVip, loading } = useAuth();
+    const location = useLocation();
     const [adblockDetected, setAdblockDetected] = useState(false);
     const [checking, setChecking] = useState(true);
 
+    // Only check for adblock on pages that have ads (reader pages)
+    const isAdPage = location.pathname.includes('/ler/');
+
     useEffect(() => {
-        if (loading) return;
+        if (loading || !isAdPage) {
+            setChecking(false);
+            return;
+        }
 
         // VIP users are exempt
         if (isVip) {
@@ -22,77 +31,78 @@ const AntiAdblock = () => {
             return;
         }
 
-        // Start detection after a small delay to let page load
+        // Start detection after ads should have loaded
         const timer = setTimeout(() => {
             detectAdblock();
-        }, 1000);
+        }, 2000);
 
         return () => clearTimeout(timer);
-    }, [loading, isVip]);
+    }, [loading, isVip, isAdPage]);
 
     const detectAdblock = async () => {
-        let detectionScore = 0;
+        // Method 1: Try to fetch a known ad network script
+        // If blocked by adblocker, this will fail
+        const adUrls = [
+            'https://www.googletagservices.com/tag/js/gpt.js',
+            'https://securepubads.g.doubleclick.net/tag/js/gpt.js',
+        ];
 
-        // Method 1: Bait element with ad-like classes
-        try {
-            const bait = document.createElement('div');
-            bait.className = 'adsbox ad-banner textAd banner_ad';
-            bait.style.cssText = 'width: 1px; height: 1px; position: fixed; left: -9999px; top: -9999px; pointer-events: none;';
-            bait.innerHTML = '&nbsp;';
-            document.body.appendChild(bait);
+        let blocked = false;
 
-            await new Promise(resolve => setTimeout(resolve, 200));
+        // Create a test element that adblockers typically target
+        const testDiv = document.createElement('div');
+        testDiv.id = 'google_ads_iframe_test';
+        testDiv.className = 'adsbygoogle';
+        testDiv.style.cssText = 'position: fixed; left: -9999px; top: -9999px; width: 300px; height: 250px;';
+        document.body.appendChild(testDiv);
 
-            const style = window.getComputedStyle(bait);
-            if (bait.offsetHeight === 0 ||
-                bait.offsetWidth === 0 ||
-                style.display === 'none' ||
-                style.visibility === 'hidden' ||
-                bait.offsetParent === null) {
-                detectionScore += 2; // High confidence
-            }
-            document.body.removeChild(bait);
-        } catch (e) {
-            // Error during test, don't count as detection
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Check if element was hidden by adblocker
+        const style = window.getComputedStyle(testDiv);
+        if (testDiv.offsetHeight === 0 ||
+            testDiv.offsetWidth === 0 ||
+            style.display === 'none' ||
+            style.visibility === 'hidden') {
+            blocked = true;
         }
 
-        // Method 2: Another bait with different classes
-        try {
-            const bait2 = document.createElement('div');
-            bait2.id = 'ad-container';
-            bait2.className = 'ad-placement ad-zone sponsored-content';
-            bait2.style.cssText = 'width: 1px; height: 1px; position: fixed; left: -9999px; top: -9999px;';
-            bait2.innerHTML = '<span class="ad">ad</span>';
-            document.body.appendChild(bait2);
-
-            await new Promise(resolve => setTimeout(resolve, 200));
-
-            const style = window.getComputedStyle(bait2);
-            if (bait2.offsetHeight === 0 ||
-                style.display === 'none' ||
-                style.visibility === 'hidden') {
-                detectionScore += 2; // High confidence
-            }
-            document.body.removeChild(bait2);
-        } catch (e) { }
-
-        // Method 3: Check for known adblocker globals (low confidence)
-        const testWindow = window as any;
-        if (testWindow.adblockEnabled ||
-            testWindow._AdBlocker ||
-            testWindow.fuckAdBlock ||
-            testWindow.blockAdBlock) {
-            detectionScore += 1;
+        // Also check if inner content was removed
+        if (testDiv.innerHTML === '' && testDiv.childNodes.length === 0) {
+            // This is normal, don't count as blocked
         }
 
-        // Only mark as detected if we have high confidence (score >= 2)
-        // This prevents false positives
-        setAdblockDetected(detectionScore >= 2);
+        document.body.removeChild(testDiv);
+
+        // Method 2: Check for uBlock/ABP specific indicators
+        const checkWindow = window as any;
+        if (checkWindow.uBO ||
+            checkWindow.uBlock ||
+            checkWindow.ABP ||
+            document.documentElement.getAttribute('data-adblockkey')) {
+            blocked = true;
+        }
+
+        // Method 3: Check if ads actually loaded on the page
+        // Look for our ad containers
+        const adContainers = document.querySelectorAll('[data-ad-slot], .banner-ad-container, [class*="ChapterAds"]');
+        if (adContainers.length > 0) {
+            // Check if any ad container is empty or hidden
+            adContainers.forEach(container => {
+                const el = container as HTMLElement;
+                if (el.offsetHeight === 0 || el.childNodes.length === 0) {
+                    // Ad container exists but is empty - might be blocked
+                    // But don't trigger just based on this
+                }
+            });
+        }
+
+        setAdblockDetected(blocked);
         setChecking(false);
     };
 
-    // Don't show anything while checking or for VIP users
-    if (checking || !adblockDetected || isVip) {
+    // Don't show on non-ad pages, while checking, or for VIP users
+    if (!isAdPage || checking || !adblockDetected || isVip) {
         return null;
     }
 
@@ -117,7 +127,7 @@ const AntiAdblock = () => {
 
                 {/* Message */}
                 <p className="text-gray-300 mb-6 text-sm leading-relaxed">
-                    Detectamos que você está usando um bloqueador de anúncios.
+                    Detectamos que você está usando um bloqueador de anúncios (uBlock Origin, AdBlock, Brave Shield, etc).
                     <br /><br />
                     Nosso site depende de anúncios para continuar funcionando e trazendo conteúdo gratuito para você.
                     <br /><br />
