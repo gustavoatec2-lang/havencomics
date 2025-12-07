@@ -6,7 +6,7 @@ import { Shield, AlertTriangle } from 'lucide-react';
  * Banner Ad component that loads the ad script
  * Displays at top and bottom of chapters
  * Hidden for VIP users (silver/gold)
- * Includes adblock detection - checks for rmp-vast in window
+ * Includes adblock detection - checks for video/iframe created by rmp-vast
  */
 
 interface BannerAdProps {
@@ -17,6 +17,7 @@ const BannerAd = ({ onAdBlocked }: BannerAdProps) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const { isVip } = useAuth();
     const [adBlocked, setAdBlocked] = useState(false);
+    const [checked, setChecked] = useState(false);
 
     useEffect(() => {
         // Don't show ads for VIP users
@@ -39,18 +40,24 @@ const BannerAd = ({ onAdBlocked }: BannerAdProps) => {
       `;
             containerRef.current.appendChild(script);
 
-            // Check after 5 seconds if rmp-vast loaded (indicates ads working)
+            // Check after 5 seconds if ad content was created
             const checkTimer = setTimeout(() => {
+                // Check for any video elements or iframes created by the ad
+                const hasVideo = document.querySelector('video[src*="silent-basis"], video[src*="vast"]');
+                const hasIframe = document.querySelector('iframe[src*="cooperative-reveal"], iframe[src*="hilltopads"]');
+                const hasRmpContainer = document.querySelector('[class*="rmp-"], [id*="rmp-"]');
+
+                // Also check window for RmpVast class
                 const win = window as any;
-                // If rmp-vast exists in window, ads are loading correctly
-                const adLoaded = win.rmpVast || win['rmp-vast'] || win.RmpVast ||
-                    document.querySelector('[class*="rmp-vast"]') ||
-                    document.querySelector('[id*="rmp-vast"]');
+                const hasRmpVast = typeof win.RmpVast === 'function' || win.rmpVastLoaded;
+
+                const adLoaded = hasVideo || hasIframe || hasRmpContainer || hasRmpVast;
 
                 if (!adLoaded) {
                     setAdBlocked(true);
                     onAdBlocked?.(true);
                 }
+                setChecked(true);
             }, 5000);
 
             return () => clearTimeout(checkTimer);
@@ -61,7 +68,7 @@ const BannerAd = ({ onAdBlocked }: BannerAdProps) => {
     if (isVip) return null;
 
     // Show adblock warning if detected
-    if (adBlocked) {
+    if (adBlocked && checked) {
         return (
             <div className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-md flex items-center justify-center p-4">
                 <div className="bg-gradient-to-br from-red-950 to-black border-2 border-red-500/50 rounded-2xl max-w-md w-full p-8 text-center shadow-2xl shadow-red-500/20">
