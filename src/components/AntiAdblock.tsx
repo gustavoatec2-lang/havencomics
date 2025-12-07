@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { AlertTriangle, Shield, X } from 'lucide-react';
+import { AlertTriangle, Shield } from 'lucide-react';
 
 /**
  * Anti-Adblock Detection System
- * Uses multiple detection methods to catch adblockers
+ * Uses bait element detection to catch adblockers
  * VIP users are exempt from this check
  */
 
@@ -22,102 +22,72 @@ const AntiAdblock = () => {
             return;
         }
 
-        // Start detection
-        detectAdblock();
+        // Start detection after a small delay to let page load
+        const timer = setTimeout(() => {
+            detectAdblock();
+        }, 1000);
+
+        return () => clearTimeout(timer);
     }, [loading, isVip]);
 
     const detectAdblock = async () => {
-        let detected = false;
+        let detectionScore = 0;
 
-        // Method 1: Bait element detection
+        // Method 1: Bait element with ad-like classes
         try {
             const bait = document.createElement('div');
-            bait.className = 'pub_300x250 pub_300x250m pub_728x90 text-ad textAd text_ad text_ads text-ads text-ad-links ad-text adSense adBlock adContent adBanner';
-            bait.style.cssText = 'width: 1px !important; height: 1px !important; position: absolute !important; left: -10000px !important; top: -1000px !important;';
+            bait.className = 'adsbox ad-banner textAd banner_ad';
+            bait.style.cssText = 'width: 1px; height: 1px; position: fixed; left: -9999px; top: -9999px; pointer-events: none;';
             bait.innerHTML = '&nbsp;';
             document.body.appendChild(bait);
 
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 200));
 
-            if (bait.offsetParent === null ||
-                bait.offsetHeight === 0 ||
+            const style = window.getComputedStyle(bait);
+            if (bait.offsetHeight === 0 ||
                 bait.offsetWidth === 0 ||
-                bait.clientHeight === 0 ||
-                window.getComputedStyle(bait).display === 'none' ||
-                window.getComputedStyle(bait).visibility === 'hidden') {
-                detected = true;
+                style.display === 'none' ||
+                style.visibility === 'hidden' ||
+                bait.offsetParent === null) {
+                detectionScore += 2; // High confidence
             }
             document.body.removeChild(bait);
         } catch (e) {
-            // If error, might be blocked
+            // Error during test, don't count as detection
         }
 
-        // Method 2: Script fetch detection
-        if (!detected) {
-            try {
-                const response = await fetch('https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js', {
-                    method: 'HEAD',
-                    mode: 'no-cors',
-                });
-                // If we get here without error, usually not blocked
-            } catch (e) {
-                detected = true;
+        // Method 2: Another bait with different classes
+        try {
+            const bait2 = document.createElement('div');
+            bait2.id = 'ad-container';
+            bait2.className = 'ad-placement ad-zone sponsored-content';
+            bait2.style.cssText = 'width: 1px; height: 1px; position: fixed; left: -9999px; top: -9999px;';
+            bait2.innerHTML = '<span class="ad">ad</span>';
+            document.body.appendChild(bait2);
+
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            const style = window.getComputedStyle(bait2);
+            if (bait2.offsetHeight === 0 ||
+                style.display === 'none' ||
+                style.visibility === 'hidden') {
+                detectionScore += 2; // High confidence
             }
+            document.body.removeChild(bait2);
+        } catch (e) { }
+
+        // Method 3: Check for known adblocker globals (low confidence)
+        const testWindow = window as any;
+        if (testWindow.adblockEnabled ||
+            testWindow._AdBlocker ||
+            testWindow.fuckAdBlock ||
+            testWindow.blockAdBlock) {
+            detectionScore += 1;
         }
 
-        // Method 3: Ad script injection test
-        if (!detected) {
-            try {
-                const testAd = document.createElement('div');
-                testAd.id = 'ad-test-banner';
-                testAd.innerHTML = '<img src="about:blank" style="display:none" onerror="this.parentNode.dataset.loaded=\'true\'">';
-                testAd.style.cssText = 'position: absolute; left: -9999px; top: -9999px;';
-                testAd.className = 'adsbygoogle adsbox ad-placement';
-                document.body.appendChild(testAd);
-
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-                if (testAd.offsetHeight === 0 || window.getComputedStyle(testAd).display === 'none') {
-                    detected = true;
-                }
-                document.body.removeChild(testAd);
-            } catch (e) { }
-        }
-
-        // Method 4: Check for common adblock extensions
-        if (!detected) {
-            const testWindow = window as any;
-            if (testWindow.AdBlock ||
-                testWindow.adblockEnabled ||
-                testWindow._AdBlocker ||
-                document.querySelector('.adblock-notice')) {
-                detected = true;
-            }
-        }
-
-        // Method 5: Double-check with another bait
-        if (!detected) {
-            try {
-                const adFrame = document.createElement('iframe');
-                adFrame.style.cssText = 'width: 1px; height: 1px; position: absolute; left: -9999px; top: -9999px;';
-                adFrame.src = 'about:blank';
-                adFrame.className = 'ad ad-banner ad-zone adsbox';
-                document.body.appendChild(adFrame);
-
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-                if (!adFrame.contentWindow ||
-                    adFrame.offsetHeight === 0 ||
-                    window.getComputedStyle(adFrame).display === 'none') {
-                    detected = true;
-                }
-                document.body.removeChild(adFrame);
-            } catch (e) {
-                detected = true;
-            }
-        }
-
-        setAdblockDetected(detected);
+        // Only mark as detected if we have high confidence (score >= 2)
+        // This prevents false positives
+        setAdblockDetected(detectionScore >= 2);
         setChecking(false);
     };
 
