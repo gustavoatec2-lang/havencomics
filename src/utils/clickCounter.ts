@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 let clickCount = 0;
 let isVipUser = false;
+let isInitialized = false;
 
 const triggerPopunder = () => {
     const script = document.createElement('script');
@@ -26,9 +27,12 @@ const triggerPopunder = () => {
     document.body.appendChild(script);
 };
 
-const handleGlobalClick = (e: MouseEvent) => {
+const handleGlobalClick = async (e: MouseEvent) => {
+    // Always recheck VIP status for each click to ensure it's current
+    const currentVipStatus = await checkVipStatusOnce();
+
     // Don't count clicks for VIP users
-    if (isVipUser) return;
+    if (currentVipStatus) return;
 
     clickCount++;
     if (clickCount >= 3) {
@@ -37,42 +41,53 @@ const handleGlobalClick = (e: MouseEvent) => {
     }
 };
 
-// Check VIP status from Supabase
-const checkVipStatus = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+// Check VIP status from Supabase (single check)
+const checkVipStatusOnce = async (): Promise<boolean> => {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
 
-    if (!session?.user) {
-        isVipUser = false;
-        return;
-    }
+        if (!session?.user) {
+            return false;
+        }
 
-    const { data } = await supabase
-        .from('profiles')
-        .select('vip_tier, vip_expires_at')
-        .eq('id', session.user.id)
-        .single();
+        const { data } = await supabase
+            .from('profiles')
+            .select('vip_tier, vip_expires_at')
+            .eq('id', session.user.id)
+            .single();
 
-    if (data) {
-        const tier = data.vip_tier || 'free';
-        const expiresAt = data.vip_expires_at ? new Date(data.vip_expires_at) : null;
-        const now = new Date();
+        if (data) {
+            const tier = data.vip_tier || 'free';
+            const expiresAt = data.vip_expires_at ? new Date(data.vip_expires_at) : null;
+            const now = new Date();
 
-        // Check if VIP is active (silver or gold and not expired)
-        isVipUser = (tier === 'silver' || tier === 'gold') &&
-            (!expiresAt || expiresAt > now);
-    } else {
-        isVipUser = false;
+            // Check if VIP is active (silver or gold and not expired)
+            return (tier === 'silver' || tier === 'gold') &&
+                (!expiresAt || expiresAt > now);
+        }
+        return false;
+    } catch (error) {
+        console.error('Error checking VIP status:', error);
+        return false;
     }
 };
 
+// Check VIP status and update cached value
+const checkVipStatus = async () => {
+    isVipUser = await checkVipStatusOnce();
+};
+
 // Initialize the click counter on the document
-export const initClickCounter = () => {
+export const initClickCounter = async () => {
+    if (isInitialized) return;
+    isInitialized = true;
+
     // Check VIP status initially
-    checkVipStatus();
+    await checkVipStatus();
 
     // Listen for auth changes to update VIP status
-    supabase.auth.onAuthStateChange(() => {
-        checkVipStatus();
+    supabase.auth.onAuthStateChange(async () => {
+        await checkVipStatus();
     });
 
     // Use capture phase to catch ALL clicks before anything else
@@ -82,4 +97,5 @@ export const initClickCounter = () => {
 // Cleanup function if needed
 export const removeClickCounter = () => {
     document.removeEventListener('click', handleGlobalClick, true);
+    isInitialized = false;
 };
