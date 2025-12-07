@@ -39,7 +39,7 @@ const BannerAd = ({ onAdBlocked }: BannerAdProps) => {
       `;
             containerRef.current.appendChild(script);
 
-            // Check after 3 seconds if ad loaded
+            // Check after 5 seconds if ad loaded
             const checkTimer = setTimeout(() => {
                 if (containerRef.current) {
                     const container = containerRef.current;
@@ -58,7 +58,7 @@ const BannerAd = ({ onAdBlocked }: BannerAdProps) => {
                         onAdBlocked?.(true);
                     }
                 }
-            }, 3000);
+            }, 5000);
 
             return () => clearTimeout(checkTimer);
         }
