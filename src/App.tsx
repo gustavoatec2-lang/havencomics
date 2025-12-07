@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { initClickCounter } from "@/utils/clickCounter";
+import AntiAdblock from "@/components/AntiAdblock";
 import Index from "./pages/Index";
 import Catalogo from "./pages/Catalogo";
 import VIP from "./pages/VIP";
@@ -28,6 +29,7 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <AntiAdblock />
         <TooltipProvider>
           <Toaster />
           <Sonner />
