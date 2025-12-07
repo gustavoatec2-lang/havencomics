@@ -31,7 +31,7 @@ const plans: Plan[] = [
     icon: Crown,
     features: [
       'Acesso a catálogo básico',
-      '5 capítulos por dia',
+      'Capítulos ilimitados',
       'Anúncios',
       'Resolução padrão',
     ],
@@ -180,9 +180,9 @@ const VIP = () => {
 
     setIsRedeeming(false);
     setVipCode('');
-    toast({ 
-      title: 'Sucesso!', 
-      description: `VIP ${codeData.tier.charAt(0).toUpperCase() + codeData.tier.slice(1)} ativado por ${codeData.duration_days} dias!` 
+    toast({
+      title: 'Sucesso!',
+      description: `VIP ${codeData.tier.charAt(0).toUpperCase() + codeData.tier.slice(1)} ativado por ${codeData.duration_days} dias!`
     });
   };
 

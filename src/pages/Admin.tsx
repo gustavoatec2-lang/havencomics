@@ -874,6 +874,72 @@ const Admin = () => {
     if (batchFoldersRef.current) batchFoldersRef.current.value = ''
   };
 
+  // Handle batch CBZ files upload - extract chapter numbers from filenames
+  const batchCbzRef = useRef<HTMLInputElement | null>(null);
+
+  const handleBatchCbzSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newChapters: { number: string; files: File[]; fileCount: number }[] = [];
+
+    for (const cbzFile of Array.from(files)) {
+      try {
+        const fileName = cbzFile.name.replace(/\.(cbz|zip)$/i, '');
+        const chapterNum = extractChapterNumber(fileName);
+
+        if (chapterNum === null) {
+          toast({ title: 'Aviso', description: `Não foi possível extrair número de: ${cbzFile.name}`, variant: 'destructive' });
+          continue;
+        }
+
+        const zip = await JSZip.loadAsync(cbzFile);
+        const imageFiles: File[] = [];
+
+        const entries = Object.keys(zip.files).sort((a, b) =>
+          a.localeCompare(b, undefined, { numeric: true })
+        );
+
+        for (const entryName of entries) {
+          const zipEntry = zip.files[entryName];
+          if (zipEntry.dir) continue;
+
+          const ext = entryName.split('.').pop()?.toLowerCase();
+          if (!['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '')) continue;
+
+          const blob = await zipEntry.async('blob');
+          const imageFile = new File([blob], entryName.split('/').pop() || entryName, {
+            type: `image/${ext === 'jpg' ? 'jpeg' : ext}`
+          });
+          imageFiles.push(imageFile);
+        }
+
+        if (imageFiles.length > 0) {
+          newChapters.push({
+            number: chapterNum.toString(),
+            files: imageFiles,
+            fileCount: imageFiles.length
+          });
+        }
+      } catch (err) {
+        toast({ title: 'Erro', description: `Falha ao processar: ${cbzFile.name}`, variant: 'destructive' });
+      }
+    }
+
+    // Sort chapters by number
+    newChapters.sort((a, b) => parseFloat(a.number) - parseFloat(b.number));
+
+    if (newChapters.length === 0) {
+      toast({ title: 'Erro', description: 'Nenhum CBZ válido encontrado', variant: 'destructive' });
+      return;
+    }
+
+    setMultiChapters(newChapters);
+    toast({ title: 'CBZ processados!', description: `${newChapters.length} capítulos encontrados` });
+
+    if (batchCbzRef.current) batchCbzRef.current.value = '';
+  };
+
   const addMoreChapter = () => {
     setMultiChapters(prev => [...prev, { number: '', files: [], fileCount: 0 }]);
   };
@@ -3034,10 +3100,10 @@ const Admin = () => {
             {/* Batch Folders Upload */}
             <div className="p-3 border-2 border-dashed border-primary/50 rounded-lg bg-primary/5">
               <div className="flex items-center justify-between mb-2">
-                <Label className="text-primary font-medium">Upload Rápido - Várias Pastas</Label>
+                <Label className="text-primary font-medium">Upload Rápido - Várias Pastas ou CBZ</Label>
               </div>
               <p className="text-xs text-muted-foreground mb-3">
-                Selecione várias pastas de uma vez. O número do capítulo será extraído do nome da pasta (ex: "Capítulo 09", "Cap 01", "1", "02").
+                Selecione várias pastas ou arquivos CBZ/ZIP. O número do capítulo será extraído do nome (ex: "Capítulo 09", "Cap 01.cbz").
               </p>
               <input
                 type="file"
@@ -3048,14 +3114,32 @@ const Admin = () => {
                 onChange={handleBatchFoldersSelect}
                 {...{ webkitdirectory: '', directory: '' } as any}
               />
-              <Button
-                type="button"
-                variant="default"
-                className="w-full gap-2"
-                onClick={() => batchFoldersRef.current?.click()}
-              >
-                <FolderOpen className="h-4 w-4" /> Selecionar Pastas
-              </Button>
+              <input
+                type="file"
+                accept=".cbz,.zip"
+                multiple
+                className="hidden"
+                ref={batchCbzRef}
+                onChange={handleBatchCbzSelect}
+              />
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="default"
+                  className="flex-1 gap-2"
+                  onClick={() => batchFoldersRef.current?.click()}
+                >
+                  <FolderOpen className="h-4 w-4" /> Pastas
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 gap-2"
+                  onClick={() => batchCbzRef.current?.click()}
+                >
+                  <FileArchive className="h-4 w-4" /> CBZ/ZIP
+                </Button>
+              </div>
             </div>
 
             {/* Chapter Entries */}
