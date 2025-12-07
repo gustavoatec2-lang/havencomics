@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Manga, DbManga, dbToUiManga } from '@/types/manga';
 import { cn } from '@/lib/utils';
 import { triggerPopunder } from '@/utils/popunder';
+import { useQuery } from '@tanstack/react-query';
 
 interface Chapter {
   id: string;
@@ -25,27 +26,66 @@ interface ReadingHistory {
   chapter_id: string | null;
 }
 
+interface MangaData {
+  manga: Manga;
+  chapters: Chapter[];
+}
+
+const fetchMangaData = async (id: string): Promise<MangaData | null> => {
+  // Try fetching by UUID first
+  let { data } = await supabase
+    .from('mangas')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  // If not found by UUID, try by slug
+  if (!data) {
+    const { data: slugData } = await supabase
+      .from('mangas')
+      .select('*')
+      .eq('slug', id)
+      .maybeSingle();
+    data = slugData;
+  }
+
+  if (!data) return null;
+
+  const { count } = await supabase
+    .from('chapters')
+    .select('*', { count: 'exact', head: true })
+    .eq('manga_id', data.id);
+
+  const manga = dbToUiManga(data as DbManga, count || 0);
+
+  // Fetch chapters
+  const { data: chaptersData } = await supabase
+    .from('chapters')
+    .select('id, number, title, created_at')
+    .eq('manga_id', data.id)
+    .order('number', { ascending: false });
+
+  return {
+    manga,
+    chapters: chaptersData || [],
+  };
+};
+
 const MangaDetail = () => {
   const { id } = useParams();
   const { user } = useAuth();
   const [isFavorited, setIsFavorited] = useState(false);
-  const [manga, setManga] = useState<Manga | null>(null);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [loading, setLoading] = useState(true);
   const [readingHistory, setReadingHistory] = useState<ReadingHistory | null>(null);
   const [readChapters, setReadChapters] = useState<Set<number>>(new Set());
 
-  useEffect(() => {
-    if (id) {
-      fetchManga();
-    }
-  }, [id]);
+  const { data: mangaData, isLoading } = useQuery({
+    queryKey: ['manga', id],
+    queryFn: () => fetchMangaData(id!),
+    enabled: !!id,
+  });
 
-  useEffect(() => {
-    if (manga) {
-      fetchChapters();
-    }
-  }, [manga?.id]);
+  const manga = mangaData?.manga ?? null;
+  const chapters = mangaData?.chapters ?? [];
 
   useEffect(() => {
     if (user && manga) {
@@ -98,51 +138,6 @@ const MangaDetail = () => {
     }
   }, [chapters, readingHistory]);
 
-  const fetchManga = async () => {
-    try {
-      // Try fetching by UUID first
-      let { data } = await supabase
-        .from('mangas')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-
-      // If not found by UUID, try by slug
-      if (!data) {
-        const { data: slugData } = await supabase
-          .from('mangas')
-          .select('*')
-          .eq('slug', id)
-          .maybeSingle();
-        data = slugData;
-      }
-
-      if (data) {
-        const { count } = await supabase
-          .from('chapters')
-          .select('*', { count: 'exact', head: true })
-          .eq('manga_id', data.id);
-        setManga(dbToUiManga(data as DbManga, count || 0));
-      }
-    } catch (error) {
-      console.error('Error fetching manga:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchChapters = async () => {
-    // Use manga.id if available, otherwise use URL param
-    const mangaId = manga?.id || id;
-    const { data } = await supabase
-      .from('chapters')
-      .select('id, number, title, created_at')
-      .eq('manga_id', mangaId!)
-      .order('number', { ascending: false });
-
-    if (data) setChapters(data);
-  };
-
   const checkFavorite = async () => {
     if (!manga) return;
     const { data } = await supabase
@@ -154,7 +149,7 @@ const MangaDetail = () => {
     setIsFavorited(!!data);
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
         <Header />

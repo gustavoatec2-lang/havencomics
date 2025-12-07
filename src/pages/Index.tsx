@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { Clock, Flame, Star, Sparkles } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -11,61 +11,63 @@ import { ChevronRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Manga, DbManga, dbToUiManga } from '@/types/manga';
 import { triggerPopunder } from '@/utils/popunder';
+import { useQuery } from '@tanstack/react-query';
+
+const fetchMangas = async (): Promise<Manga[]> => {
+  const { data: mangas } = await supabase
+    .from('mangas')
+    .select('*')
+    .order('updated_at', { ascending: false });
+
+  if (!mangas || mangas.length === 0) return [];
+
+  const mangasWithChapters = await Promise.all(
+    mangas.map(async (manga) => {
+      const { count } = await supabase
+        .from('chapters')
+        .select('*', { count: 'exact', head: true })
+        .eq('manga_id', manga.id);
+      return dbToUiManga(manga as DbManga, count || 0);
+    })
+  );
+
+  return mangasWithChapters;
+};
 
 const Index = () => {
-  const [featuredManga, setFeaturedManga] = useState<Manga | null>(null);
-  const [recentlyUpdated, setRecentlyUpdated] = useState<Manga[]>([]);
-  const [highlights, setHighlights] = useState<Manga[]>([]);
-  const [top10, setTop10] = useState<Manga[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: allMangas = [], isLoading } = useQuery({
+    queryKey: ['mangas', 'home'],
+    queryFn: fetchMangas,
+  });
 
-  useEffect(() => {
-    fetchMangas();
-  }, []);
-
-  const fetchMangas = async () => {
-    try {
-      // Fetch all mangas with chapter counts
-      const { data: mangas } = await supabase
-        .from('mangas')
-        .select('*')
-        .order('updated_at', { ascending: false });
-
-      if (mangas && mangas.length > 0) {
-        // Get chapter counts for each manga
-        const mangasWithChapters = await Promise.all(
-          mangas.map(async (manga) => {
-            const { count } = await supabase
-              .from('chapters')
-              .select('*', { count: 'exact', head: true })
-              .eq('manga_id', manga.id);
-            return dbToUiManga(manga as DbManga, count || 0);
-          })
-        );
-
-        // Featured manga (weekly highlight with banner)
-        const featured = mangasWithChapters.find(m => m.is_weekly_highlight || m.isWeeklyHighlight);
-        setFeaturedManga(featured || mangasWithChapters[0] || null);
-
-        // Recently updated (sorted by updated_at)
-        setRecentlyUpdated(mangasWithChapters.slice(0, 6));
-
-        // Highlights
-        const highlightMangas = mangasWithChapters.filter(m => m.isHighlight || m.is_home_highlight);
-        setHighlights(highlightMangas.length > 0 ? highlightMangas : mangasWithChapters.slice(0, 3));
-
-        // Top 10 by views
-        const sortedByViews = [...mangasWithChapters].sort((a, b) => b.views - a.views);
-        setTop10(sortedByViews.slice(0, 10));
-      }
-    } catch (error) {
-      console.error('Error fetching mangas:', error);
-    } finally {
-      setLoading(false);
+  const { featuredManga, recentlyUpdated, highlights, top10 } = useMemo(() => {
+    if (allMangas.length === 0) {
+      return { featuredManga: null, recentlyUpdated: [], highlights: [], top10: [] };
     }
-  };
 
-  if (loading) {
+    // Featured manga (weekly highlight with banner)
+    const featured = allMangas.find(m => m.is_weekly_highlight || m.isWeeklyHighlight) || allMangas[0] || null;
+
+    // Recently updated (sorted by updated_at)
+    const recent = allMangas.slice(0, 6);
+
+    // Highlights
+    const highlightMangas = allMangas.filter(m => m.isHighlight || m.is_home_highlight);
+    const highlightsResult = highlightMangas.length > 0 ? highlightMangas : allMangas.slice(0, 3);
+
+    // Top 10 by views
+    const sortedByViews = [...allMangas].sort((a, b) => b.views - a.views);
+    const top10Result = sortedByViews.slice(0, 10);
+
+    return {
+      featuredManga: featured,
+      recentlyUpdated: recent,
+      highlights: highlightsResult,
+      top10: top10Result,
+    };
+  }, [allMangas]);
+
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
         <Header />

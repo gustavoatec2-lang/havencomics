@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Search, TrendingUp, TrendingDown, Calendar, ArrowUpDown } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -8,8 +8,46 @@ import { Button } from '@/components/ui/button';
 import { Manga, DbManga, dbToUiManga, MangaType, MangaStatus } from '@/types/manga';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
 
 type SortOption = 'recent' | 'oldest' | 'popular' | 'unpopular';
+
+interface CatalogoData {
+  mangas: Manga[];
+  genres: string[];
+}
+
+const fetchCatalogoData = async (): Promise<CatalogoData> => {
+  const { data } = await supabase
+    .from('mangas')
+    .select('*')
+    .order('updated_at', { ascending: false });
+
+  if (!data) return { mangas: [], genres: [] };
+
+  // Extract all unique genres from mangas
+  const genresSet = new Set<string>();
+  data.forEach((manga) => {
+    if (manga.genres && Array.isArray(manga.genres)) {
+      manga.genres.forEach((g: string) => genresSet.add(g));
+    }
+  });
+
+  const mangasWithChapters = await Promise.all(
+    data.map(async (manga) => {
+      const { count } = await supabase
+        .from('chapters')
+        .select('*', { count: 'exact', head: true })
+        .eq('manga_id', manga.id);
+      return dbToUiManga(manga as DbManga, count || 0);
+    })
+  );
+
+  return {
+    mangas: mangasWithChapters,
+    genres: Array.from(genresSet).sort(),
+  };
+};
 
 const Catalogo = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -17,9 +55,14 @@ const Catalogo = () => {
   const [selectedStatus, setSelectedStatus] = useState<MangaStatus>('Todos');
   const [selectedGenre, setSelectedGenre] = useState<string>('Todos');
   const [sortBy, setSortBy] = useState<SortOption>('recent');
-  const [mangas, setMangas] = useState<Manga[]>([]);
-  const [allGenres, setAllGenres] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  const { data: catalogoData, isLoading } = useQuery({
+    queryKey: ['mangas', 'catalogo'],
+    queryFn: fetchCatalogoData,
+  });
+
+  const mangas = catalogoData?.mangas ?? [];
+  const allGenres = catalogoData?.genres ?? [];
 
   const types: MangaType[] = ['Todos', 'Mangá', 'Manhwa', 'Manhua'];
   const statuses: MangaStatus[] = ['Todos', 'Em Andamento', 'Completo', 'Hiato', 'Cancelado'];
@@ -30,45 +73,6 @@ const Catalogo = () => {
     { value: 'popular', label: 'Mais Popular', icon: <TrendingUp className="h-4 w-4" /> },
     { value: 'unpopular', label: 'Menos Popular', icon: <TrendingDown className="h-4 w-4" /> },
   ];
-
-  useEffect(() => {
-    fetchMangas();
-  }, []);
-
-  const fetchMangas = async () => {
-    try {
-      const { data } = await supabase
-        .from('mangas')
-        .select('*')
-        .order('updated_at', { ascending: false });
-
-      if (data) {
-        // Extract all unique genres from mangas
-        const genresSet = new Set<string>();
-        data.forEach((manga) => {
-          if (manga.genres && Array.isArray(manga.genres)) {
-            manga.genres.forEach((g: string) => genresSet.add(g));
-          }
-        });
-        setAllGenres(Array.from(genresSet).sort());
-
-        const mangasWithChapters = await Promise.all(
-          data.map(async (manga) => {
-            const { count } = await supabase
-              .from('chapters')
-              .select('*', { count: 'exact', head: true })
-              .eq('manga_id', manga.id);
-            return dbToUiManga(manga as DbManga, count || 0);
-          })
-        );
-        setMangas(mangasWithChapters);
-      }
-    } catch (error) {
-      console.error('Error fetching mangas:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const filteredAndSortedMangas = useMemo(() => {
     let result = mangas.filter((manga) => {
@@ -234,7 +238,7 @@ const Catalogo = () => {
 
           {/* Results */}
           <div className="flex-1">
-            {loading ? (
+            {isLoading ? (
               <p className="text-muted-foreground text-center py-8">Carregando...</p>
             ) : (
               <>
