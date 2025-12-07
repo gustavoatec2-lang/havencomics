@@ -59,6 +59,39 @@ const Reader = () => {
     };
   }, [user, manga?.id, currentChapter]);
 
+  // Increment manga views once per session
+  useEffect(() => {
+    if (manga?.id) {
+      incrementMangaViews(manga.id);
+    }
+  }, [manga?.id]);
+
+  const incrementMangaViews = async (mangaId: string) => {
+    // Use sessionStorage to track if we already counted this manga in this session
+    const viewedKey = `viewed_${mangaId}`;
+    if (sessionStorage.getItem(viewedKey)) return;
+
+    try {
+      // Increment views using RPC or direct update
+      const { data: currentManga } = await supabase
+        .from('mangas')
+        .select('views')
+        .eq('id', mangaId)
+        .single();
+
+      if (currentManga) {
+        await supabase
+          .from('mangas')
+          .update({ views: (currentManga.views || 0) + 1 })
+          .eq('id', mangaId);
+
+        sessionStorage.setItem(viewedKey, 'true');
+      }
+    } catch (error) {
+      console.error('Error incrementing views:', error);
+    }
+  };
+
   const saveReadingHistory = async () => {
     if (!user || !manga || !currentChapterData) return;
 
