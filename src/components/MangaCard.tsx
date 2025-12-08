@@ -34,6 +34,8 @@ const MangaCard = ({ manga, showRank, variant = 'default' }: MangaCardProps) => 
           <img
             src={manga.cover}
             alt={manga.title}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
           />
         </div>
@@ -77,6 +79,8 @@ const MangaCard = ({ manga, showRank, variant = 'default' }: MangaCardProps) => 
         <img
           src={manga.cover}
           alt={manga.title}
+          loading="lazy"
+          decoding="async"
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
         />
 

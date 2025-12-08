@@ -5,6 +5,7 @@ import Footer from '@/components/Footer';
 import HeroSection from '@/components/HeroSection';
 import SectionHeader from '@/components/SectionHeader';
 import MangaCard from '@/components/MangaCard';
+import SEOHead from '@/components/SEOHead';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
@@ -81,6 +82,12 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEOHead
+        title="HavenComics - Ler Mangá Online Grátis | Manhwa e Manhua em Português"
+        description="Leia mangá, manhwa e manhua online grátis em português! +1000 obras com atualizações diárias. Solo Leveling, One Piece, Naruto, Tower of God e muito mais."
+        keywords="ler mangá online grátis, manhwa online português, manhua grátis, webtoon português, solo leveling, one piece, naruto, tower of god, isekai, romance manhwa"
+        canonicalPath="/"
+      />
       <Header />
 
       {/* Hero Section */}

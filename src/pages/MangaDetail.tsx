@@ -4,6 +4,7 @@ import { Play, Star, Eye, Clock, ChevronRight, Heart } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import Comments from '@/components/Comments';
+import SEOHead, { generateMangaSchema } from '@/components/SEOHead';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
@@ -212,6 +213,23 @@ const MangaDetail = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEOHead
+        title={`${manga.title} - Ler Online Grátis | HavenComics`}
+        description={`Leia ${manga.title} online grátis em português. ${manga.description?.slice(0, 120)}...`}
+        keywords={`ler ${manga.title} online, ${manga.title} mangá, ${manga.type} online, ${manga.author}`}
+        ogImage={manga.cover}
+        ogType="book"
+        canonicalPath={`/manga/${manga.id}`}
+        structuredData={generateMangaSchema({
+          title: manga.title,
+          description: manga.description || '',
+          author: manga.author,
+          cover: manga.cover,
+          genres: manga.genres,
+          rating: manga.rating,
+          id: manga.id,
+        })}
+      />
       <Header />
 
       <main>

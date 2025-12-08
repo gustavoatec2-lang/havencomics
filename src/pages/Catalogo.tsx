@@ -3,6 +3,7 @@ import { Search, TrendingUp, TrendingDown, Calendar, ArrowUpDown } from 'lucide-
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import MangaCard from '@/components/MangaCard';
+import SEOHead, { generateCatalogSchema } from '@/components/SEOHead';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Manga, DbManga, dbToUiManga, MangaType, MangaStatus } from '@/types/manga';
@@ -105,6 +106,13 @@ const Catalogo = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEOHead
+        title="Catálogo de Mangás Online Grátis | Manhwa e Manhua - HavenComics"
+        description="Explore nosso catálogo completo de mangás, manhwas e manhuas em português. Filtrar por gênero, status e tipo. +1000 obras para ler online grátis."
+        keywords="catálogo mangá online, lista de manhwa, manhua português, webtoon grátis, mangá romance, isekai mangá, ação mangá, fantasia manhwa, solo leveling, tower of god"
+        canonicalPath="/catalogo"
+        structuredData={generateCatalogSchema(mangas.length)}
+      />
       <Header />
 
       <main className="container py-8">
