@@ -19,13 +19,13 @@ const SEOHead = ({
     title = 'HavenComics - Ler Mangá Online Grátis | Manhwa e Manhua em Português',
     description = 'Leia mangá, manhwa e manhua online grátis em português! +1000 obras com atualizações diárias. Solo Leveling, One Piece, Naruto, Tower of God e muito mais.',
     keywords = 'ler mangá online grátis, manhwa online português, manhua grátis, webtoon português',
-    ogImage = 'https://havencomics.com/favicon.png',
+    ogImage = 'https://havencomics.online/favicon.png',
     ogType = 'website',
     canonicalPath = '',
     noindex = false,
     structuredData,
 }: SEOHeadProps) => {
-    const baseUrl = 'https://havencomics.com';
+    const baseUrl = 'https://havencomics.online';
     const fullUrl = `${baseUrl}${canonicalPath}`;
 
     useEffect(() => {
@@ -105,7 +105,7 @@ export const generateMangaSchema = (manga: {
 }) => ({
     '@context': 'https://schema.org',
     '@type': 'Book',
-    '@id': `https://havencomics.com/manga/${manga.id}`,
+    '@id': `https://havencomics.online/manga/${manga.id}`,
     name: manga.title,
     description: manga.description,
     author: {
@@ -120,7 +120,7 @@ export const generateMangaSchema = (manga: {
         bestRating: 5,
         worstRating: 1,
     } : undefined,
-    url: `https://havencomics.com/manga/${manga.id}`,
+    url: `https://havencomics.online/manga/${manga.id}`,
     inLanguage: 'pt-BR',
 });
 
@@ -130,7 +130,7 @@ export const generateCatalogSchema = (totalItems: number) => ({
     '@type': 'CollectionPage',
     name: 'Catálogo de Mangás - HavenComics',
     description: 'Explore nosso catálogo completo de mangás, manhwas e manhuas em português.',
-    url: 'https://havencomics.com/catalogo',
+    url: 'https://havencomics.online/catalogo',
     mainEntity: {
         '@type': 'ItemList',
         numberOfItems: totalItems,
